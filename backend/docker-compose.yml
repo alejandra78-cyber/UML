@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: umlapp
+      POSTGRES_USER: umlapp
+      POSTGRES_PASSWORD: umlapp_dev_password
+    ports:
+      # Remapeado a 5433 en el host: el puerto 5432 ya esta ocupado por un
+      # servicio nativo de PostgreSQL 15 de Windows (postgresql-x64-15).
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umlapp -d umlapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
