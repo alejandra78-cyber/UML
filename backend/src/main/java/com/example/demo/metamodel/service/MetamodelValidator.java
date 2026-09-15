@@ -86,21 +86,21 @@ public class MetamodelValidator {
     }
 
     /**
-     * 3. Herencia multiple (mas de una relacion INHERITANCE con la misma clase fuente)
-     * no esta soportada en Java: error bloqueante.
+     * 3. Herencia multiple (mas de una relacion GENERALIZATION con la misma clase
+     * fuente) no esta soportada en Java: error bloqueante.
      */
     private void checkMultipleInheritance(CanonicalModel model, List<ValidationIssue> issues) {
         Map<UUID, Integer> inheritanceCountBySource = new HashMap<>();
         for (Relationship relationship : model.relationships()) {
-            if (relationship.type() == RelationshipType.INHERITANCE) {
+            if (relationship.type() == RelationshipType.GENERALIZATION) {
                 inheritanceCountBySource.merge(relationship.sourceClassId(), 1, Integer::sum);
             }
         }
         inheritanceCountBySource.forEach((sourceClassId, count) -> {
             if (count > 1) {
-                issues.add(ValidationIssue.error("MULTIPLE_INHERITANCE",
+                issues.add(ValidationIssue.error("MULTIPLE_GENERALIZATION",
                         "La clase " + sourceClassId + " tiene " + count
-                                + " relaciones INHERITANCE como fuente; Java no soporta herencia multiple",
+                                + " relaciones GENERALIZATION como fuente; Java no soporta herencia multiple",
                         sourceClassId.toString()));
             }
         });

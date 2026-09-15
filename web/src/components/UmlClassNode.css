@@ -1,0 +1,284 @@
+.uml-class-node {
+  position: relative;
+  min-width: 220px;
+  background: #ffffff;
+  border: 1.5px solid #333;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Consolas', 'Menlo', monospace;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* El recorte de esquinas va en __body (header/atributos/métodos), NUNCA en el
+   contenedor .uml-class-node: los <Handle> de conexión de reactflow son hermanos
+   de __body posicionados justo en el borde (left:-4px/right:-4px), y un
+   `overflow: hidden` en el contenedor recortaba la mitad de su área clicable,
+   haciendo que el navegador resolviera el clic al div de la clase en vez del
+   handle -- rompía silenciosamente TODA creación de relaciones por arrastre
+   (confirmado con Playwright: document.elementFromPoint en el centro del handle
+   devolvía `.uml-class-node`, no `.react-flow__handle-right`). */
+.uml-class-node__body {
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+/* Candado con tooltip "Editado por [Usuario]" (sección 8.2 / RF-04.4): visible
+   solo para los usuarios que NO poseen el lock (usePresenceStore ya filtra el
+   lock propio, ver setLock). */
+.uml-class-node__lock-badge {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: help;
+  z-index: 5;
+}
+
+/* Deshabilita visualmente la edición inline (renombrar, atributos, métodos)
+   mientras otro usuario mantiene el soft-lock de la clase. No se bloquea a
+   nivel de store: alcanza con esto para esta fase (ver instrucciones). */
+.uml-class-node__body--disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.uml-class-node__header {
+  font-weight: 700;
+  text-align: center;
+  padding: 6px 8px;
+  background: #dce6f5;
+  border-bottom: 1.5px solid #333;
+  cursor: text;
+}
+
+.uml-class-node__header input {
+  width: 100%;
+  text-align: center;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.uml-class-node__section {
+  padding: 4px 8px;
+  border-bottom: 1px solid #ccc;
+}
+
+.uml-class-node__section:last-child {
+  border-bottom: none;
+}
+
+.uml-class-node__row {
+  position: relative;
+  padding: 2px 50px 2px 0;
+  cursor: text;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.uml-class-node__row input {
+  width: 100%;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.uml-class-node__visibility {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 700;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.uml-class-node__visibility:hover {
+  background: #e0e0e0;
+}
+
+/* Punto 2: cluster de iconos compactos por fila (mover arriba/abajo/eliminar),
+   visibles solo en hover -- `position:absolute` + `opacity` (nunca `display`),
+   así nunca cambia la altura de la fila/clase al aparecer (ver la nota extensa
+   de .uml-class-node__add sobre por qué eso rompía el arrastre de relaciones). */
+.uml-class-node__row-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.uml-class-node__row:hover .uml-class-node__row-actions {
+  opacity: 1;
+}
+
+.uml-class-node__row-action {
+  width: 15px;
+  height: 16px;
+  line-height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: #555;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.uml-class-node__row-action:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.uml-class-node__row-action:disabled {
+  color: #ccc;
+  cursor: default;
+}
+
+.uml-class-node__row-action--delete {
+  color: #b42318;
+  font-size: 13px;
+}
+
+.uml-class-node__row-action--delete:hover {
+  background: #fde3e3;
+}
+
+.uml-class-node__add {
+  margin-top: 2px;
+  width: 100%;
+  font-size: 11px;
+  background: transparent;
+  border: 1px dashed #999;
+  border-radius: 3px;
+  color: #555;
+  cursor: pointer;
+  padding: 2px 4px;
+  /* Punto 2: sin placeholder permanente -- la fila "+ atributo"/"+ método" solo
+     aparece con la clase en hover o seleccionada (ver .uml-class-node--selected),
+     nunca como estado por defecto. Un compartimento vacío se ve en blanco.
+     `visibility: hidden` (NO `display: none`): un handle de conexión es
+     descendiente de .uml-class-node, así que pasar el mouse sobre él YA activa
+     :hover en toda la clase -- si el botón entra/sale del flujo con display,
+     cambia la ALTURA del nodo justo en pleno arrastre de una relación (React
+     Flow recalcula dimensiones vía ResizeObserver y el arrastre de conexión se
+     rompe a mitad de camino: confirmado con Playwright, onConnect dejaba de
+     dispararse). visibility:hidden reserva el espacio siempre y nunca mueve nada. */
+  visibility: hidden;
+}
+
+.uml-class-node:hover .uml-class-node__add,
+.uml-class-node--selected .uml-class-node__add {
+  visibility: visible;
+}
+
+.uml-class-node__add:hover {
+  background: #f0f0f0;
+}
+
+/* --- Sintaxis de atributo "visibilidad nombre : tipo" y badges (punto 1) --- */
+.uml-class-node__attr-line {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.uml-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 0 4px;
+  border-radius: 3px;
+  /* Reset -- el badge PK es un <button>, los demás siguen siendo <span>. */
+  font-family: inherit;
+  cursor: default;
+  vertical-align: middle;
+}
+
+.uml-badge--pk {
+  background: #fff2cc;
+  color: #8a6d00;
+  border: 1px solid #e0c34a;
+  cursor: pointer;
+}
+
+/* Placeholder clicable (marcar como PK): invisible salvo en hover de la fila,
+   mismo criterio que el resto de la interfaz -- nada de placeholders permanentes. */
+.uml-badge--pk-placeholder {
+  background: transparent;
+  color: transparent;
+  border: 1px dashed transparent;
+  cursor: pointer;
+}
+
+.uml-class-node__row:hover .uml-badge--pk-placeholder {
+  color: #999;
+  border-color: #ccc;
+}
+
+.uml-badge--unique {
+  background: #e3f2fd;
+  color: #0d47a1;
+  border: 1px solid #90caf9;
+}
+
+.uml-badge--notnull {
+  background: #f1f1f1;
+  color: #444;
+  border: 1px solid #ccc;
+}
+
+.uml-badge--default {
+  background: #e8f5e9;
+  color: #1b5e20;
+  border: 1px solid #a5d6a7;
+  font-weight: 500;
+}
+
+.uml-badge--unknown-type {
+  background: #fde3e3;
+  color: #b42318;
+  border: 1px solid #f3a6a6;
+  font-weight: 500;
+}
+
+/* --- Editor inline del atributo: input de nombre + <select> de tipo --- */
+.uml-class-node__edit-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+}
+
+.uml-class-node__name-input {
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.uml-class-node__colon {
+  color: #666;
+}
+
+.uml-class-node__type-select {
+  font-family: inherit;
+  font-size: inherit;
+  max-width: 90px;
+}

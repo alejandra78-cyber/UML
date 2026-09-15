@@ -9,6 +9,7 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 
 import java.security.Principal;
@@ -88,7 +89,19 @@ public class StompChannelInterceptor implements ChannelInterceptor {
 
     @Override
     public Message<?> preSend(@NonNull Message<?> message, @NonNull MessageChannel channel) {
-        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
+        // IMPORTANTE: StompHeaderAccessor.wrap(message) crea SIEMPRE una copia nueva del
+        // accessor, desligada del MutableMessageHeaders real que Spring adjunta al mensaje
+        // mientras atraviesa la cadena de interceptores. Mutar esa copia (p.ej. accessor.setUser(...)
+        // en el CONNECT) no se reflejaba en el mensaje real, por lo que StompSubProtocolHandler
+        // nunca vinculaba el Principal a la sesion y todo SEND posterior fallaba con
+        // "No hay Principal autenticado" pese a que el CONNECT parecia aceptarse. Se usa en
+        // cambio MessageHeaderAccessor.getAccessor(...), que recupera el accessor mutable real
+        // ya asociado al mensaje (mismo patron que la documentacion oficial de Spring para
+        // autenticar sesiones STOMP en preSend).
+        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        if (accessor == null) {
+            accessor = StompHeaderAccessor.wrap(message);
+        }
         StompCommand command = accessor.getCommand();
 
         if (command == StompCommand.CONNECT) {

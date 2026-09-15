@@ -1,0 +1,160 @@
+.diagram-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+.diagram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border, #ddd);
+}
+
+.diagram-toolbar h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.diagram-toolbar__spacer {
+  flex: 1;
+}
+
+.diagram-toolbar button {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.diagram-toolbar__logout {
+  background: transparent;
+  border: 1px solid #ccc;
+}
+
+/* --- Punto 6: iconos de inserción y de herramienta de relación --- */
+.diagram-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-left: 1px solid var(--border, #ddd);
+}
+
+.diagram-toolbar__icon-btn {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.diagram-toolbar__group--relations .diagram-toolbar__icon-btn {
+  padding: 6px 9px;
+  font-size: 14px;
+}
+
+.diagram-toolbar__icon-btn--armed {
+  background: #22d3ee;
+  border-color: #0e7490;
+  color: #04303a;
+}
+
+.diagram-toolbar__armed-hint {
+  font-size: 11px;
+  color: #0e7490;
+  white-space: nowrap;
+}
+
+.diagram-toolbar__package-btn {
+  position: relative;
+  display: inline-flex;
+}
+
+.diagram-toolbar__tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 20;
+}
+
+.connection-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.connection-badge--online {
+  background: #e3f7e9;
+  color: #1c7c3c;
+}
+
+.connection-badge--connecting {
+  background: #fff6da;
+  color: #916a00;
+}
+
+.connection-badge--offline {
+  background: #fde3e3;
+  color: #b42318;
+}
+
+.diagram-canvas {
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- Handles de conexión (punto 4): el default de reactflow (#1a192b, casi negro)
+   es prácticamente invisible sobre el fondo oscuro del lienzo. Acento celeste con
+   buen contraste, agrandado en hover, y glow cuando reactflow lo marca como
+   destino válido durante un arrastre (.react-flow__handle-valid, confirmado
+   empíricamente: reactflow no lo documenta como clase pública pero sí la aplica). */
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: #38bdf8;
+  border: 1.5px solid #ffffff;
+  transition: box-shadow 0.12s ease, background-color 0.12s ease;
+}
+
+/* "Aumentar ligeramente en hover" se logra con un anillo de box-shadow en vez de
+   cambiar width/height: es un efecto visualmente equivalente sin tocar el layout
+   box del handle. (La causa real de que las conexiones dejaran de completarse en
+   un momento de esta tarea NO fue esto -- fue que el botón "+ atributo" cambiaba
+   la altura de la clase en pleno arrastre al activarse :hover sobre un handle
+   descendiente; ver el comentario de .uml-class-node__add en UmlClassNode.css.) */
+.react-flow__handle:hover {
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.5);
+}
+
+.react-flow__handle-valid {
+  background: #22d3ee;
+  box-shadow:
+    0 0 0 4px rgba(56, 189, 248, 0.35),
+    0 0 12px 4px rgba(34, 211, 238, 0.55);
+}
+
+/* Resalta el borde completo de la clase cuando alguno de sus handles es un destino
+   válido de conexión, para que sea obvio dónde se puede soltar (:has() -- Chromium
+   105+/Firefox 121+/Safari 15.4+, todos los navegadores relevantes para este
+   proyecto ya lo soportan). */
+.react-flow__node:has(.react-flow__handle-valid) .uml-class-node,
+.react-flow__node:has(.react-flow__handle-valid) .er-table-node {
+  box-shadow:
+    0 0 0 2px #22d3ee,
+    0 0 14px 2px rgba(34, 211, 238, 0.6);
+}

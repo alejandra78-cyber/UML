@@ -1,0 +1,163 @@
+.er-table-node {
+  min-width: 240px;
+  background: #ffffff;
+  border: 1.5px solid #2b5d34;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.er-table-node__header {
+  font-weight: 700;
+  text-align: center;
+  padding: 6px 8px;
+  background: #dceee0;
+  border-bottom: 1.5px solid #2b5d34;
+  cursor: text;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.er-table-node__header input {
+  width: 100%;
+  text-align: center;
+  font-weight: 700;
+  font-family: inherit;
+  font-size: inherit;
+  text-transform: uppercase;
+}
+
+.er-table-node__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.er-table-node__row {
+  cursor: text;
+}
+
+.er-table-node__row:not(:last-child) {
+  border-bottom: 1px solid #e2e2e2;
+}
+
+/* Punto 1: separador debajo de la(s) columna(s) PK, más marcado que el borde
+   tenue entre filas normales -- patrón estándar de diagramas ER. */
+.er-table-node__row--pk-divider {
+  border-bottom: 1.5px solid #7a5b00;
+}
+
+.er-table-node__row:hover {
+  background: #f7faf7;
+}
+
+.er-table-node__row td {
+  padding: 3px 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.er-table-node__row input {
+  width: 100%;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.er-table-node__badges {
+  width: 1%;
+  cursor: pointer;
+}
+
+.er-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  line-height: 1.4;
+}
+
+.er-badge--pk {
+  background: #ffe9a8;
+  color: #7a5b00;
+  border: 1px solid #d8ab00;
+}
+
+/* Placeholder clicable para marcar PK: invisible salvo en hover de la fila, para
+   no ensuciar filas que nunca van a ser PK -- mismo criterio que el resto de la
+   interfaz (nada de placeholders permanentes). */
+.er-badge--pk-placeholder {
+  background: transparent;
+  color: transparent;
+  border: 1px dashed transparent;
+}
+
+.er-table-node__row:hover .er-badge--pk-placeholder {
+  color: #999;
+  border-color: #ccc;
+}
+
+.er-table-node__col-name {
+  font-weight: 600;
+  width: 100%;
+}
+
+/* Punto 1: "(FK)" junto al nombre, en vez del badge separado que había antes. */
+.er-fk-label {
+  font-weight: 500;
+  color: #1e4b9c;
+}
+
+.er-table-node__col-type {
+  font-family: 'Consolas', 'Menlo', monospace;
+  color: #555;
+  text-align: right;
+}
+
+.er-not-null {
+  color: #b42318;
+  font-size: 9px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.er-table-node__delete {
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #b42318;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.er-table-node__row:hover .er-table-node__delete {
+  opacity: 1;
+}
+
+.er-table-node__delete:hover {
+  background: #fde3e3;
+}
+
+.er-table-node__add {
+  display: block;
+  margin: 4px 6px 6px;
+  width: calc(100% - 12px);
+  font-size: 11px;
+  background: transparent;
+  border: 1px dashed #999;
+  border-radius: 3px;
+  color: #555;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.er-table-node__add:hover {
+  background: #f0f0f0;
+}

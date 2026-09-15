@@ -1,5 +1,7 @@
 package com.example.demo.collaboration.dto;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -26,6 +28,8 @@ public record StompBroadcastMessage(
         Map<String, Object> payload
 ) {
     public StompBroadcastMessage {
-        payload = payload == null ? Map.of() : Map.copyOf(payload);
+        // Ver StompMutationMessage: Map.copyOf/Map.of rechazan valores null, y el
+        // payload puede legítimamente traer campos null (p.ej. Attribute.defaultValue).
+        payload = payload == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(payload));
     }
 }

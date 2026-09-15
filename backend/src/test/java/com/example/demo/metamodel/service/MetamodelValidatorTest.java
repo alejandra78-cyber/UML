@@ -109,9 +109,9 @@ class MetamodelValidatorTest {
         ClassEntity b = classWithPk(parentB, "PadreB");
 
         Relationship inheritanceA = Relationship.builder().id(UUID.randomUUID())
-                .sourceClassId(childId).targetClassId(parentA).type(RelationshipType.INHERITANCE).build();
+                .sourceClassId(childId).targetClassId(parentA).type(RelationshipType.GENERALIZATION).build();
         Relationship inheritanceB = Relationship.builder().id(UUID.randomUUID())
-                .sourceClassId(childId).targetClassId(parentB).type(RelationshipType.INHERITANCE).build();
+                .sourceClassId(childId).targetClassId(parentB).type(RelationshipType.GENERALIZATION).build();
 
         CanonicalModel model = modelWith(List.of(child, a, b), List.of(inheritanceA, inheritanceB));
 
@@ -121,7 +121,7 @@ class MetamodelValidatorTest {
         assertThat(result.issues())
                 .anySatisfy(issue -> {
                     assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
-                    assertThat(issue.code()).isEqualTo("MULTIPLE_INHERITANCE");
+                    assertThat(issue.code()).isEqualTo("MULTIPLE_GENERALIZATION");
                 });
     }
 
@@ -132,13 +132,13 @@ class MetamodelValidatorTest {
         ClassEntity child = classWithPk(childId, "Hijo");
         ClassEntity parent = classWithPk(parentId, "Padre");
         Relationship inheritance = Relationship.builder().id(UUID.randomUUID())
-                .sourceClassId(childId).targetClassId(parentId).type(RelationshipType.INHERITANCE).build();
+                .sourceClassId(childId).targetClassId(parentId).type(RelationshipType.GENERALIZATION).build();
 
         CanonicalModel model = modelWith(List.of(child, parent), List.of(inheritance));
 
         ValidationResult result = validator.validate(model);
 
-        assertThat(result.issues()).noneMatch(issue -> issue.code().equals("MULTIPLE_INHERITANCE"));
+        assertThat(result.issues()).noneMatch(issue -> issue.code().equals("MULTIPLE_GENERALIZATION"));
     }
 
     @Test

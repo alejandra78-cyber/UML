@@ -1,0 +1,30 @@
+.view-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.view-mode-toggle__option {
+  font-size: 13px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+}
+
+.view-mode-toggle__option + .view-mode-toggle__option {
+  border-left: 1px solid #ccc;
+}
+
+.view-mode-toggle__option--active {
+  background: #dce6f5;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.view-mode-toggle__option:hover:not(.view-mode-toggle__option--active) {
+  background: #f0f0f0;
+}

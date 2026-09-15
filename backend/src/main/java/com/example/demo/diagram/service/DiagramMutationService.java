@@ -53,7 +53,10 @@ public class DiagramMutationService {
     @Transactional
     public boolean apply(UUID diagramId, OperationType type, UUID targetId, UUID userId,
                           long sequenceNum, Map<String, Object> payload) {
-        Diagram diagram = diagramRepository.findById(diagramId).orElse(null);
+        // findByIdForUpdate (SELECT ... FOR UPDATE) en vez de findById: serializa el ciclo
+        // lectura-modificación-escritura de current_state por diagrama, evitando que dos
+        // mutaciones concurrentes sobre el mismo diagrama se pisen (ver Javadoc del metodo).
+        Diagram diagram = diagramRepository.findByIdForUpdate(diagramId).orElse(null);
         if (diagram == null) {
             log.warn("Mutacion {} rechazada: el diagrama {} no existe", type, diagramId);
             return false;

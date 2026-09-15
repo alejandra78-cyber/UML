@@ -1,5 +1,7 @@
 package com.example.demo.collaboration.dto;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,6 +31,14 @@ public record StompMutationMessage(
         Map<String, Object> payload
 ) {
     public StompMutationMessage {
-        payload = payload == null ? Map.of() : Map.copyOf(payload);
+        // OJO: Map.copyOf (y Map.of) rechazan valores null con NullPointerException.
+        // Campos legítimamente nullables del esquema canónico viajan dentro de este
+        // payload (p.ej. Attribute.defaultValue), así que un LinkedHashMap envuelto en
+        // Collections.unmodifiableMap es el único que tolera esos valores: con
+        // Map.copyOf, cualquier ADD_ATTRIBUTE/UPDATE_ATTRIBUTE con defaultValue=null (el
+        // caso mas comun, ya que la mayoria de los atributos no tienen default) hacia
+        // fallar la deserializacion completa del mensaje con una excepcion invisible
+        // para el cliente (el SEND se perdia sin ningun error ni broadcast).
+        payload = payload == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(payload));
     }
 }

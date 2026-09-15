@@ -3,6 +3,7 @@ package com.example.demo.config;
 import com.example.demo.auth.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
@@ -43,9 +44,17 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(Customizer.withDefaults())
                 .csrf(CsrfConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
+                        // Sin este permitAll, el forward interno de Spring MVC a /error (p.ej.
+                        // al lanzar ResponseStatusException(401) desde AuthService.login) cae
+                        // bajo anyRequest().authenticated(): como esa peticion es anonima, el
+                        // Http403ForbiddenEntryPoint por defecto de Spring Security la bloquea
+                        // con 403 y body vacio ANTES de que el 401 original llegue a
+                        // renderizarse, ocultando el error real al cliente.
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/ws-stomp/**").permitAll()
                         .anyRequest().authenticated())

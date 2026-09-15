@@ -37,16 +37,14 @@ import java.util.UUID;
  * {@code diagram.model.Diagram}) y su escritura en {@code diagram_operations}.
  * Solo si esa persistencia tiene exito se difunde el broadcast a la sala.</p>
  *
- * <p><b>Identidad del emisor:</b> {@code handleLock}, {@code handleJoin} y
- * {@code handleCursor} obtienen el {@code userId} del {@link Principal} ya
- * autenticado por JWT en la sesion STOMP (ver {@code StompChannelInterceptor}),
- * nunca del campo {@code userId} que el cliente declara en el cuerpo del
- * mensaje ({@link LockActionRequest#userId()}, {@link PresenceJoinRequest#userId()},
- * {@link CursorUpdateRequest#userId()} se conservan solo por compatibilidad de
- * payload y se ignoran al procesar). {@code handleMutate} (via
- * {@link StompMutationMessage#userId()}) NO tiene todavia este endurecimiento:
- * sigue confiando en el userId declarado por el cliente, lo cual queda como
- * limitacion de seguridad pendiente y explicita.</p>
+ * <p><b>Identidad del emisor:</b> {@code handleLock}, {@code handleMutate},
+ * {@code handleJoin} y {@code handleCursor} obtienen el {@code userId} del
+ * {@link Principal} ya autenticado por JWT en la sesion STOMP (ver
+ * {@code StompChannelInterceptor}), nunca del campo {@code userId} que el
+ * cliente declara en el cuerpo del mensaje. Los campos {@link LockActionRequest#userId()},
+ * {@link StompMutationMessage#userId()}, {@link PresenceJoinRequest#userId()} y
+ * {@link CursorUpdateRequest#userId()} se conservan en sus respectivos records
+ * solo por compatibilidad de payload; el controlador nunca los lee.</p>
  */
 @Controller
 public class CollaborationStompController {
@@ -90,9 +88,10 @@ public class CollaborationStompController {
     }
 
     @MessageMapping("/diagram/{id}/mutate")
-    public void handleMutate(@DestinationVariable String id, StompMutationMessage message) {
+    public void handleMutate(@DestinationVariable String id, StompMutationMessage message, Principal principal) {
         UUID diagramId = UUID.fromString(id);
         OperationType type = message.operationType();
+        UUID userId = authenticatedUserId(principal);
 
         if (type == OperationType.ACQUIRE_LOCK || type == OperationType.RELEASE_LOCK) {
             log.warn("Operacion {} recibida en canal /mutate; debe enviarse por /diagram/{}/lock", type, id);
@@ -103,31 +102,31 @@ public class CollaborationStompController {
 
         switch (type.mutualExclusionMode()) {
             case LOCK_REQUIRED -> {
-                if (!requireOwnedLock(message.targetId(), message.userId())) {
+                if (!requireOwnedLock(message.targetId(), userId)) {
                     return;
                 }
-                applyAndBroadcast(diagramId, type, message.targetId(), message.userId(), serverTimestamp, message.payload());
+                applyAndBroadcast(diagramId, type, message.targetId(), userId, serverTimestamp, message.payload());
             }
             case DIAGRAM_LOCK -> {
                 // BULK_MERGE: exige un lock sobre la raiz del diagrama (targetId = diagramId)
                 // adquirido previamente via /diagram/{id}/lock, para que la insercion del
                 // subgrafo sea una transaccion unica sin interferencias concurrentes.
-                if (!requireOwnedLock(diagramId, message.userId())) {
+                if (!requireOwnedLock(diagramId, userId)) {
                     return;
                 }
-                applyAndBroadcast(diagramId, type, null, message.userId(), serverTimestamp, message.payload());
+                applyAndBroadcast(diagramId, type, null, userId, serverTimestamp, message.payload());
             }
             case LWW_FREE -> {
                 LwwConflictResolver.LwwResult<Map<String, Object>> result =
                         lwwConflictResolver.resolve(message.targetId(), serverTimestamp, message.payload());
                 if (result.applied()) {
-                    applyAndBroadcast(diagramId, type, message.targetId(), message.userId(), serverTimestamp, message.payload());
+                    applyAndBroadcast(diagramId, type, message.targetId(), userId, serverTimestamp, message.payload());
                 }
                 // Si no se aplico, la actualizacion llego desordenada respecto de una mas
                 // reciente ya aceptada: se descarta en silencio (no se informa error al
                 // emisor, ya que en 60 FPS esto es esperable y no es un fallo del usuario).
             }
-            case NONE -> applyAndBroadcast(diagramId, type, message.targetId(), message.userId(), serverTimestamp, message.payload());
+            case NONE -> applyAndBroadcast(diagramId, type, message.targetId(), userId, serverTimestamp, message.payload());
             case LOCK_ENGINE -> log.warn("OperationType {} no deberia llegar a /mutate", type);
         }
     }
