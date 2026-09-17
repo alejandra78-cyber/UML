@@ -1,0 +1,83 @@
+.voice-toolbar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.voice-toolbar__command-input {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: transparent;
+  color: inherit;
+  width: 160px;
+}
+
+.voice-toolbar__command-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.voice-toolbar__button {
+  font-size: 15px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: transparent;
+  cursor: pointer;
+}
+
+.voice-toolbar__button--listening {
+  background: #fdecea;
+  border-color: #c0392b;
+  animation: voice-toolbar-pulse 1s ease-in-out infinite;
+}
+
+@keyframes voice-toolbar-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.voice-toolbar__feedback {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 220px;
+  max-width: 320px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #333;
+  z-index: 30;
+}
+
+.voice-toolbar__feedback--success {
+  border-color: #1a7f37;
+}
+
+.voice-toolbar__feedback--info {
+  border-color: #b7791f;
+}
+
+.voice-toolbar__feedback--error {
+  border-color: #c0392b;
+  color: #b91c1c;
+}
+
+.voice-toolbar__feedback button {
+  margin-left: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+}

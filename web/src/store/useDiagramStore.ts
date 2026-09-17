@@ -1,5 +1,6 @@
 import { applyEdgeChanges, applyNodeChanges, type Edge, type EdgeChange, type Node, type NodeChange } from 'reactflow'
 import { create } from 'zustand'
+import { enqueueMutation } from '../offline/offlineQueue'
 import type { OperationType, StompBroadcastMessage } from '../types/collaboration'
 import type { Attribute, CanonicalModel, ClassEntity, Method, Relationship } from '../types/diagram'
 import { applyOperation } from './applyOperation'
@@ -106,17 +107,63 @@ async function withLock(transport: MutationTransport, targetId: string, send: ()
   }
 }
 
+// NOTA DE DISEÑO (offline, PKG-04/UC11): antes, CUALQUIER punto de mutación que
+// hacía `if (transport) { transport.send(...) }` (o el guard temprano
+// `if (!transport) return` que envolvía un withLock) simplemente descartaba la
+// operación en silencio cuando no había conexión -- el cambio quedaba solo en
+// memoria (Zustand) y se perdía sin dejar rastro al recargar la página. Estas dos
+// funciones son el reemplazo de ese patrón: con transport, se comportan
+// EXACTAMENTE igual que antes; sin transport, encolan la operación real en
+// IndexedDB (ver offline/offlineQueue.ts) para reenviarla al reconectar (ver
+// features/offline/useOfflineSync.ts). No tiene sentido intentar adquirir un lock
+// estando offline (no hay servidor del que pedirlo): `sendOrQueueLocked` encola
+// directamente el operationType real, sin pasar por withLock.
+function sendOrQueueLocked(
+  transport: MutationTransport | null,
+  diagramId: string | null,
+  lockTargetId: string,
+  operationType: OperationType,
+  targetId: string | null,
+  payload: Record<string, unknown>,
+) {
+  if (transport) {
+    void withLock(transport, lockTargetId, () => transport.send(operationType, targetId, payload))
+  } else if (diagramId) {
+    void enqueueMutation({ diagramId, operationType, targetId, payload })
+  }
+}
+
+/** Mismo criterio que sendOrQueueLocked, para operaciones NONE/LWW_FREE que nunca requieren lock. */
+function sendOrQueueFree(
+  transport: MutationTransport | null,
+  diagramId: string | null,
+  operationType: OperationType,
+  targetId: string | null,
+  payload: Record<string, unknown>,
+) {
+  if (transport) {
+    transport.send(operationType, targetId, payload)
+  } else if (diagramId) {
+    void enqueueMutation({ diagramId, operationType, targetId, payload })
+  }
+}
+
 interface DiagramState {
   model: CanonicalModel
   nodes: Node[]
   edges: Edge[]
   transport: MutationTransport | null
+  /** Diagrama activo (ver App.tsx/ensureActiveDiagram); necesario para poder encolar
+   * mutaciones offline con el diagramId correcto sin depender de un ref externo. */
+  diagramId: string | null
+  setDiagramId: (id: string | null) => void
   connectTransport: (transport: MutationTransport) => void
   disconnectTransport: () => void
   hydrate: (model: CanonicalModel) => void
   applyBroadcast: (broadcast: StompBroadcastMessage) => void
   addClass: (partial?: Partial<ClassEntity>) => string
   updateClass: (id: string, patch: Partial<ClassEntity>) => void
+  deleteClass: (id: string) => void
   addAttribute: (classId: string) => string
   addMethod: (classId: string) => string
   moveAttribute: (classId: string, attributeId: string, direction: 'up' | 'down') => void
@@ -124,6 +171,7 @@ interface DiagramState {
   togglePrimaryKey: (classId: string, attributeId: string) => void
   addRelationship: (relationship: Omit<Relationship, 'id'>) => void
   updateRelationship: (id: string, patch: Partial<Relationship>) => void
+  deleteRelationship: (id: string) => void
   updateWaypoints: (id: string, waypoints: Relationship['waypoints']) => void
   onNodesChange: (changes: NodeChange[]) => void
   onEdgesChange: (changes: EdgeChange[]) => void
@@ -133,6 +181,8 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
   model: emptyModel,
   ...deriveGraph(emptyModel),
   transport: null,
+  diagramId: null,
+  setDiagramId: (id) => set({ diagramId: id }),
 
   connectTransport: (transport) => set({ transport }),
   disconnectTransport: () => set({ transport: null }),
@@ -180,11 +230,9 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       return { model, ...deriveGraph(model, state.nodes, state.edges) }
     })
 
-    const { transport } = get()
-    if (transport) {
-      // ADD_CLASS es NONE (sin exclusión mutua): no requiere lock.
-      transport.send('ADD_CLASS', null, newClass as unknown as Record<string, unknown>)
-    }
+    const { transport, diagramId } = get()
+    // ADD_CLASS es NONE (sin exclusión mutua): no requiere lock, online u offline.
+    sendOrQueueFree(transport, diagramId, 'ADD_CLASS', null, newClass as unknown as Record<string, unknown>)
 
     return id
   },
@@ -201,19 +249,19 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       return { model: nextModel, ...deriveGraph(nextModel, state.nodes, state.edges) }
     })
 
-    const { transport } = get()
-    if (!transport) return
+    const { transport, diagramId } = get()
 
-    // RENAME_CLASS es LOCK_REQUIRED: hay que adquirir el lock sobre la CLASE.
+    // RENAME_CLASS es LOCK_REQUIRED: hay que adquirir el lock sobre la CLASE
+    // (online) o encolar directamente offline (no hay servidor del que pedirlo).
     if (patch.name !== undefined) {
-      void withLock(transport, id, () => transport.send('RENAME_CLASS', id, { name: patch.name }))
+      sendOrQueueLocked(transport, diagramId, id, 'RENAME_CLASS', id, { name: patch.name })
     }
     // MOVE_CLASS/RESIZE_CLASS son LWW_FREE: no requieren lock.
     if (patch.position !== undefined) {
-      transport.send('MOVE_CLASS', id, { x: patch.position.x, y: patch.position.y })
+      sendOrQueueFree(transport, diagramId, 'MOVE_CLASS', id, { x: patch.position.x, y: patch.position.y })
     }
     if (patch.width !== undefined || patch.height !== undefined) {
-      transport.send('RESIZE_CLASS', id, {
+      sendOrQueueFree(transport, diagramId, 'RESIZE_CLASS', id, {
         width: patch.width ?? before.width,
         height: patch.height ?? before.height,
       })
@@ -225,22 +273,20 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
         if (!existingIds.has(attribute.id)) {
           // ADD_ATTRIBUTE es LOCK_REQUIRED: el lock se pide sobre la CLASE (todavía
           // no existe un id de atributo del lado del servidor para bloquear).
-          void withLock(transport, id, () =>
-            transport.send('ADD_ATTRIBUTE', id, attribute as unknown as Record<string, unknown>),
-          )
+          sendOrQueueLocked(transport, diagramId, id, 'ADD_ATTRIBUTE', id, attribute as unknown as Record<string, unknown>)
         } else {
           const previous = before.attributes.find((a) => a.id === attribute.id) as Attribute
           const diff = diffFields(previous as unknown as Record<string, unknown>, attribute as unknown as Record<string, unknown>)
           if (Object.keys(diff).length > 0) {
             // UPDATE_ATTRIBUTE es LOCK_REQUIRED: el lock se pide sobre el ATRIBUTO.
-            void withLock(transport, attribute.id, () => transport.send('UPDATE_ATTRIBUTE', attribute.id, diff))
+            sendOrQueueLocked(transport, diagramId, attribute.id, 'UPDATE_ATTRIBUTE', attribute.id, diff)
           }
         }
       }
       // Atributos que estaban en "before" y ya no están en el patch = eliminados.
       for (const attribute of before.attributes) {
         if (!nextIds.has(attribute.id)) {
-          void withLock(transport, attribute.id, () => transport.send('DELETE_ATTRIBUTE', attribute.id, {}))
+          sendOrQueueLocked(transport, diagramId, attribute.id, 'DELETE_ATTRIBUTE', attribute.id, {})
         }
       }
     }
@@ -249,23 +295,44 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       const existingIds = new Set(before.methods.map((m) => m.id))
       for (const method of patch.methods) {
         if (!existingIds.has(method.id)) {
-          void withLock(transport, id, () =>
-            transport.send('ADD_METHOD', id, method as unknown as Record<string, unknown>),
-          )
+          sendOrQueueLocked(transport, diagramId, id, 'ADD_METHOD', id, method as unknown as Record<string, unknown>)
         } else {
           const previous = before.methods.find((m) => m.id === method.id) as Method
           const diff = diffFields(previous as unknown as Record<string, unknown>, method as unknown as Record<string, unknown>)
           if (Object.keys(diff).length > 0) {
-            void withLock(transport, method.id, () => transport.send('UPDATE_METHOD', method.id, diff))
+            sendOrQueueLocked(transport, diagramId, method.id, 'UPDATE_METHOD', method.id, diff)
           }
         }
       }
       for (const method of before.methods) {
         if (!nextIds.has(method.id)) {
-          void withLock(transport, method.id, () => transport.send('DELETE_METHOD', method.id, {}))
+          sendOrQueueLocked(transport, diagramId, method.id, 'DELETE_METHOD', method.id, {})
         }
       }
     }
+  },
+
+  // DELETE_CLASS es LOCK_REQUIRED sobre la propia clase (mismo criterio que
+  // RENAME_CLASS/ADD_ATTRIBUTE: no se borra una clase que otro colaborador tiene
+  // bloqueada). El corte local (optimista) refleja EXACTAMENTE lo que
+  // applyOperation.ts hace del lado de un broadcast entrante: además de sacar la
+  // clase, elimina cualquier relación que la referencie como source o target --
+  // sin este cascade local, una relación "huérfana" quedaba visible hasta que
+  // llegara el próximo broadcast que la tocara.
+  deleteClass: (id) => {
+    set((state) => {
+      const model: CanonicalModel = {
+        ...state.model,
+        classes: state.model.classes.filter((c) => c.id !== id),
+        relationships: state.model.relationships.filter(
+          (r) => r.sourceClassId !== id && r.targetClassId !== id,
+        ),
+      }
+      return { model, ...deriveGraph(model, state.nodes, state.edges) }
+    })
+
+    const { transport, diagramId } = get()
+    sendOrQueueLocked(transport, diagramId, id, 'DELETE_CLASS', id, {})
   },
 
   // Centraliza la construcción de un Attribute/Method con sus defaults del esquema
@@ -379,11 +446,9 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       return { model, ...deriveGraph(model, state.nodes, state.edges) }
     })
 
-    const { transport } = get()
-    if (transport) {
-      // ADD_RELATIONSHIP es NONE: no requiere lock.
-      transport.send('ADD_RELATIONSHIP', null, newRelationship as unknown as Record<string, unknown>)
-    }
+    const { transport, diagramId } = get()
+    // ADD_RELATIONSHIP es NONE: no requiere lock, online u offline.
+    sendOrQueueFree(transport, diagramId, 'ADD_RELATIONSHIP', null, newRelationship as unknown as Record<string, unknown>)
   },
 
   updateRelationship: (id, patch) => {
@@ -398,11 +463,25 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       return { model: nextModel, ...deriveGraph(nextModel, state.nodes, state.edges) }
     })
 
-    const { transport } = get()
-    if (!transport) return
+    const { transport, diagramId } = get()
 
     // UPDATE_RELATIONSHIP es LOCK_REQUIRED: el lock se pide sobre la RELACIÓN.
-    void withLock(transport, id, () => transport.send('UPDATE_RELATIONSHIP', id, patch as Record<string, unknown>))
+    sendOrQueueLocked(transport, diagramId, id, 'UPDATE_RELATIONSHIP', id, patch as Record<string, unknown>)
+  },
+
+  // DELETE_RELATIONSHIP es LOCK_REQUIRED sobre la propia relación (mismo criterio
+  // que UPDATE_RELATIONSHIP).
+  deleteRelationship: (id) => {
+    set((state) => {
+      const model: CanonicalModel = {
+        ...state.model,
+        relationships: state.model.relationships.filter((r) => r.id !== id),
+      }
+      return { model, ...deriveGraph(model, state.nodes, state.edges) }
+    })
+
+    const { transport, diagramId } = get()
+    sendOrQueueLocked(transport, diagramId, id, 'DELETE_RELATIONSHIP', id, {})
   },
 
   updateWaypoints: (id, waypoints) => {
@@ -414,21 +493,29 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       return { model: nextModel, ...deriveGraph(nextModel, state.nodes, state.edges) }
     })
 
-    const { transport } = get()
-    if (transport) {
-      // UPDATE_WAYPOINTS es LWW_FREE (igual que MOVE_CLASS): no requiere lock, para
-      // que arrastrar el punto intermedio de la línea sea fluido.
-      transport.send('UPDATE_WAYPOINTS', id, { waypoints: waypoints ?? [] })
-    }
+    const { transport, diagramId } = get()
+    // UPDATE_WAYPOINTS es LWW_FREE (igual que MOVE_CLASS): no requiere lock, para
+    // que arrastrar el punto intermedio de la línea sea fluido, online u offline.
+    sendOrQueueFree(transport, diagramId, 'UPDATE_WAYPOINTS', id, { waypoints: waypoints ?? [] })
   },
 
   onNodesChange: (changes) => {
+    // Las 'remove' (tecla Supr/Backspace con el nodo seleccionado, atajo nativo de
+    // reactflow) NO pasan por applyNodeChanges/deriveGraph acá: antes solo sacaban
+    // el nodo del array local `nodes`, sin tocar `model.classes` -- la clase
+    // "borrada" reaparecía como un fantasma en cuanto cualquier otra mutación
+    // (propia o de otro colaborador) volvía a derivar `nodes` desde el modelo, que
+    // nunca había cambiado de verdad. Se resuelven con el mismo `deleteClass` real
+    // que usa el menú contextual, para que el atajo de teclado borre de verdad.
+    const removeIds = changes.filter((c) => c.type === 'remove').map((c) => c.id)
+    const otherChanges = changes.filter((c) => c.type !== 'remove')
+
     // updatedNodes se captura DENTRO del set() para poder leer, después, la posición
     // final ya resuelta por applyNodeChanges -- ver por qué es necesario en el
     // comentario de más abajo.
     let updatedNodes: Node[] = []
     set((state) => {
-      const nodes = applyNodeChanges(changes, state.nodes)
+      const nodes = applyNodeChanges(otherChanges, state.nodes)
       updatedNodes = nodes
       const classes = state.model.classes.map((classEntity) => {
         const node = nodes.find((n) => n.id === classEntity.id)
@@ -437,9 +524,12 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       return { nodes, model: { ...state.model, classes } }
     })
 
-    const { transport } = get()
-    if (!transport) return
-    for (const change of changes) {
+    for (const id of removeIds) {
+      get().deleteClass(id)
+    }
+
+    const { transport, diagramId } = get()
+    for (const change of otherChanges) {
       if (change.type === 'position' && change.dragging === false) {
         // BUG REAL encontrado con Playwright (navegador real, no un script propio):
         // React Flow dispara el evento de "fin de arrastre" llamando internamente a
@@ -457,8 +547,8 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
         // traiga), así que se lee de ahí en vez de depender de change.position.
         const node = updatedNodes.find((n) => n.id === change.id)
         if (node) {
-          // MOVE_CLASS es LWW_FREE: no requiere lock.
-          transport.send('MOVE_CLASS', change.id, { x: node.position.x, y: node.position.y })
+          // MOVE_CLASS es LWW_FREE: no requiere lock, online u offline.
+          sendOrQueueFree(transport, diagramId, 'MOVE_CLASS', change.id, { x: node.position.x, y: node.position.y })
         }
       }
     }
@@ -472,6 +562,17 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
   // Solo se persiste la selección en memoria -- no hay ninguna operación STOMP de
   // "seleccionar edge", es puramente estado de UI local.
   onEdgesChange: (changes) => {
-    set((state) => ({ edges: applyEdgeChanges(changes, state.edges) }))
+    // Mismo criterio que onNodesChange: una 'remove' (tecla Supr/Backspace con la
+    // relación seleccionada) pasa por deleteRelationship de verdad, no solo por
+    // applyEdgeChanges (que dejaba el edge "borrado" localmente pero seguía vivo
+    // en model.relationships, listo para reaparecer como fantasma).
+    const removeIds = changes.filter((c) => c.type === 'remove').map((c) => c.id)
+    const otherChanges = changes.filter((c) => c.type !== 'remove')
+
+    set((state) => ({ edges: applyEdgeChanges(otherChanges, state.edges) }))
+
+    for (const id of removeIds) {
+      get().deleteRelationship(id)
+    }
   },
 }))

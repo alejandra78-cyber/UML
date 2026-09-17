@@ -65,6 +65,29 @@
   font-size: inherit;
 }
 
+.er-table-node__edit-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
+.er-table-node__edit-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.er-table-node__edit-row select {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.er-table-node__colon {
+  color: #999;
+}
+
 .er-table-node__badges {
   width: 1%;
   cursor: pointer;

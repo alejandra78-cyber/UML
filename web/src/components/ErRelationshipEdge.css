@@ -42,6 +42,38 @@
   outline: none;
 }
 
+.er-edge-label select {
+  font-family: inherit;
+  font-size: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+  cursor: pointer;
+  color: #2b5d34;
+}
+
+.er-edge-delete {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: all;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  padding: 0;
+  font-size: 12px;
+  font-family: 'Consolas', 'Menlo', monospace;
+  background: #ffffff;
+  color: #c0392b;
+  border: 1px solid #c0392b;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.er-edge-delete:hover {
+  background: #fdecea;
+}
+
 .er-edge-waypoint {
   position: absolute;
   width: 10px;

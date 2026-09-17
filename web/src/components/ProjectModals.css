@@ -1,0 +1,82 @@
+/* Compartido por CreateProjectModal e InviteMemberModal (UC17/UC18): mismo look
+   que VisionModal (overlay + dialog centrado), adaptado a un formulario simple. */
+
+.project-modal__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.project-modal__dialog {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px 28px;
+  min-width: 320px;
+  max-width: 420px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.project-modal__dialog h2 {
+  margin: 0 0 16px;
+  font-size: 16px;
+}
+
+.project-modal__dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.project-modal__dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #333;
+}
+
+.project-modal__dialog input,
+.project-modal__dialog textarea,
+.project-modal__dialog select {
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.project-modal__dialog textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.project-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.project-modal__actions button {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: transparent;
+  cursor: pointer;
+}
+
+.project-modal__error {
+  margin: 0;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+.project-modal__success {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #15803d;
+}

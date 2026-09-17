@@ -27,9 +27,97 @@ La plataforma resuelve con rigor industrial y solidez académica los **13 requer
 
 ---
 
-## 2. Principios de diseño arquitectónico y longevidad del software
+## 2. Actores del Sistema
 
-### 2.1. Desarrollo Basado en Componentes (DBC / Component-Based Software Engineering)
+### 2.1. Jerarquía de Actores
+
+- **Observador** (primario): actor base. Puede visualizar el diagrama en tiempo real y ver la presencia de otros colaboradores conectados. No realiza mutaciones sobre el modelo.
+- **Admin** (primario, *generaliza* a Observador): hereda todas las capacidades de Observador y añade la totalidad de las capacidades de edición manual, modelado asistido por IA, resiliencia offline, generación de artefactos, interoperabilidad XMI y gestión de proyecto. Este rol absorbe lo que en versiones previas de este documento se describía como roles separados de `EDITOR` y `ADMINISTRADOR`/`PROPIETARIO`: a nivel de base de datos (`project_members.role`, §15) subsiste la distinción `OWNER`/`EDITOR`/`VIEWER` para el control de acceso STOMP (RF-04.6), pero a nivel de casos de uso ambos roles con capacidad de mutación se modelan como una única generalización de Admin sobre Observador.
+- **Gemini** (secundario): sistema externo de inteligencia artificial (Google Gemini 2.0 Flash) invocado por Admin en los casos de uso de modelado asistido por IA (PKG-03: UC08, UC09, UC10). No inicia interacciones por sí mismo; únicamente responde a solicitudes formuladas por el actor Admin.
+
+```
+   ┌──────────────┐
+   │  Observador  │
+   └──────┬───────┘
+          △  (generalización)
+          │
+   ┌──────┴───────┐          invoca           ┌─────────────┐
+   │     Admin     │ ─────────────────────────▶│   Gemini    │
+   └──────────────┘        (secundario)        └─────────────┘
+```
+
+> **Nota de alcance:** el actor **Usuario Final** que opera por voz la aplicación móvil generada (RF-07, RF-08) no es un actor del sistema ModelCollab — es un actor del *software producido* por ModelCollab, fuera del límite del catálogo de casos de uso de esta sección.
+
+---
+
+## 3. Catálogo de Casos de Uso
+
+El siguiente catálogo formaliza, según PUDS (Proceso Unificado de Desarrollo de Software), los **19 casos de uso** de ModelCollab, agrupados en **7 paquetes de realización**. El alcance queda confirmado contra el plan arquitectónico vigente: la herramienta cubre exclusivamente **Diagramas de Clases UML** y **Diagramas Entidad-Relación**; no existe un caso de uso de "Diagrama de Secuencia" como funcionalidad de la herramienta — el diagrama de secuencia de §10.3 es documentación interna del protocolo STOMP, no una vista generable para el usuario.
+
+### 3.1. PKG-01 — Colaboración y Presencia
+
+| UC | Nombre | Actor(es) | RF relacionado(s) |
+| :--- | :--- | :--- | :--- |
+| UC01 | Visualizar Diagrama en Tiempo Real | Observador | RF-04.1–04.3 |
+| UC02 | Ver Presencia de Colaboradores | Observador | RF-04.3 |
+
+### 3.2. PKG-02 — Modelado Manual
+
+| UC | Nombre | Actor(es) | RF relacionado(s) |
+| :--- | :--- | :--- | :--- |
+| UC03 | Crear/Editar/Eliminar Clase o Tabla | Admin | RF-01.1 |
+| UC04 | Gestionar Atributos Tipados | Admin | RF-01.2 |
+| UC05 | Gestionar Métodos y Operaciones | Admin | RF-01.3 |
+| UC06 | Crear/Editar Relación | Admin | RF-01.4 |
+| UC07 | Alternar Vista UML / ER | Admin | RF-01.6 |
+
+### 3.3. PKG-03 — Modelado Asistido por IA
+
+| UC | Nombre | Actor(es) | RF relacionado(s) |
+| :--- | :--- | :--- | :--- |
+| UC08 | Modelar por Comando de Voz | Admin, Gemini | RF-02.1–02.4 |
+| UC09 | Modelar por Comando de Texto | Admin, Gemini | RF-02.1 (alterno) |
+| UC10 | Importar Diagrama desde Foto de Pizarra | Admin, Gemini | RF-03.1–03.3 |
+
+### 3.4. PKG-04 — Resiliencia Offline
+
+| UC | Nombre | Actor(es) | RF relacionado(s) |
+| :--- | :--- | :--- | :--- |
+| UC11 | Trabajar sin Conexión | Admin | RF-05.1–05.2 |
+| UC12 | Sincronizar Cambios al Reconectar | Admin | RF-05.4–05.5 |
+
+### 3.5. PKG-05 — Generación de Artefactos
+
+| UC | Nombre | Actor(es) | RF relacionado(s) |
+| :--- | :--- | :--- | :--- |
+| UC13 | Generar Backend Spring Boot | Admin | RF-06 |
+| UC14 | Generar Aplicación Móvil | Admin | RF-07 |
+
+### 3.6. PKG-06 — Interoperabilidad XMI
+
+| UC | Nombre | Actor(es) | RF relacionado(s) |
+| :--- | :--- | :--- | :--- |
+| UC15 | Exportar Diagrama a XMI | Admin | RF-09.1 |
+| UC16 | Importar Diagrama desde XMI | Admin | RF-09.2 |
+
+### 3.7. PKG-07 — Gestión de Proyecto
+
+| UC | Nombre | Actor(es) | RF relacionado(s) |
+| :--- | :--- | :--- | :--- |
+| UC17 | Crear Proyecto | Admin | Infraestructura RF-04 |
+| UC18 | Invitar Colaborador y Asignar Rol | Admin | Infraestructura RF-04 |
+| UC19 | Eliminar Proyecto | Admin | Infraestructura RF-04 |
+
+### 3.8. Casos de Uso de Soporte Interno (no forman parte del total de 19)
+
+| Relación | Caso de uso de soporte | Disparado por | Descripción |
+| :--- | :--- | :--- | :--- |
+| `<<include>>` | Adquirir Bloqueo de Edición | UC03, UC04, UC05, UC06 | Soft-lock con TTL de 5 s (RF-04.4, §10.2) requerido antes de mutar un campo crítico; incluido obligatoriamente por los casos de uso de edición manual. |
+| `<<extend>>` | Rechazar Generación Masiva (Guardrail) | UC08, UC09 | Punto de extensión condicional (RF-02.6) que se activa cuando el clasificador detecta la intención `GENERATE_DOMAIN`, rechazando la orden en vez de completar el flujo base de modelado por IA. |
+
+## 4. Principios de diseño arquitectónico y longevidad del software
+
+### 4.1. Desarrollo Basado en Componentes (DBC / Component-Based Software Engineering)
 - **Frontend Web (Consumo y Producción de Componentes):**
   - La interfaz se desacopla en componentes puros, reutilizables e independientes:
     - `UmlClassNode`: Renderizado de caja de clase UML / tabla ER con edición inline, indicadores de lock y badges de visibilidad.
@@ -51,11 +139,11 @@ La plataforma resuelve con rigor industrial y solidez académica los **13 requer
     - `XmiInteropComponent`: Parser SAX/DOM y serializador XML conforme a OMG XMI 2.1.
     - `OfflineReconciliationComponent`: Motor de rebase ordenado de mutaciones y resolución de conflictos.
 
-### 2.2. Monolito Modular Táctico (*Keep It Simple & Evolvable*)
+### 4.2. Monolito Modular Táctico (*Keep It Simple & Evolvable*)
 - Todo el backend de la plataforma se ejecuta como un monolito modular en **Java 21 / Spring Boot 3.3**.
 - Se evita la sobreingeniería de microservicios distribuidos para la herramienta de diseño. La modularidad se garantiza por paquetes aislados y contratos en memoria. Si la carga demanda segregar el motor de generación o el broker de colaboración, estos componentes pueden extraerse a microservicios independientes sin alterar la lógica de negocio.
 
-### 2.3. Estrategia Formal de Longevidad y Evolución del Software
+### 4.3. Estrategia Formal de Longevidad y Evolución del Software
 Para responder con contundencia técnica al principio de **"cómo hacer que la vida del software dure más"**:
 1. **Aislamiento del Núcleo de Dominio:** El metamodelo canónico en formato JSON es el núcleo estable y central del sistema, completamente agnóstico de frameworks web o lenguajes de salida.
 2. **Generadores como Plugins de Plantillas Intercambiables:** El generador de código no tiene lógica de sintaxis Java o TypeScript cableada en código duro (*hardcoded*). Utiliza plantillas **Apache FreeMarker (`.ftl`)**. Migrar el destino a NestJS, Go, Python FastAPI, o pasar de React Native a Flutter, consiste únicamente en registrar un nuevo paquete de plantillas dentro de `src/main/resources/templates/`, manteniendo intacto el 100% del núcleo de modelado.
@@ -67,25 +155,25 @@ Para responder con contundencia técnica al principio de **"cómo hacer que la v
 
 ---
 
-## 3. Requisitos funcionales detallados (Ejes del Ingeniero)
+## 5. Requisitos funcionales detallados (Ejes del Ingeniero)
 
-> **Nota de alcance:** los mecanismos de autenticación, creación de proyecto y control de acceso por rol (`OWNER`/`EDITOR`/`VIEWER`) se especifican como parte de **RF-04 (Edición Colaborativa en Tiempo Real)** y del NFR de **Seguridad de Acceso** (§4), al ser infraestructura habilitadora de la colaboración multiusuario y no un objetivo funcional independiente del sistema. Este proyecto es una **herramienta de modelado UML/ER colaborativo**, no un sistema de gestión de usuarios; el login y los roles existen únicamente para que la colaboración en tiempo real (§8) tenga sentido, no como funcionalidad de negocio en sí misma.
+> **Nota de alcance:** los mecanismos de autenticación, creación de proyecto y control de acceso por rol (`OWNER`/`EDITOR`/`VIEWER`) se especifican como parte de **RF-04 (Edición Colaborativa en Tiempo Real)** y del NFR de **Seguridad de Acceso** (§6), al ser infraestructura habilitadora de la colaboración multiusuario y no un objetivo funcional independiente del sistema. Este proyecto es una **herramienta de modelado UML/ER colaborativo**, no un sistema de gestión de usuarios; el login y los roles existen únicamente para que la colaboración en tiempo real (§10) tenga sentido, no como funcionalidad de negocio en sí misma.
 
 ### RF-01: Modelado Visual Manual (UML y Entidad-Relación)
-- **RF-01.1:** Creación, edición inline, renombrado y eliminación de Clases UML / Tablas de datos.
-- **RF-01.2:** Atributos tipados con soporte canónico (`INTEGER`, `BIGINT`, `VARCHAR(length)`, `TEXT`, `DECIMAL(p,s)`, `BOOLEAN`, `DATE`, `DATETIME`, `UUID`) y modificadores (`PK`, `FK`, `Unique`, `Nullable`, `Default`).
-- **RF-01.3:** Métodos y operaciones con visibilidad (`+`, `-`, `#`, `~`), tipo de retorno y parámetros tipados.
-- **RF-01.4:** Relaciones UML y ER: Asociación bidireccional/unidireccional, Agregación, Composición, Herencia/Generalización, Dependencia y Muchos a Muchos (`MANY_TO_MANY`) con multiplicidades (`1..1`, `0..1`, `1..*`, `*`), roles y waypoints interactivos.
+- **RF-01.1:** Creación, edición inline, renombrado y eliminación de Clases UML / Tablas de datos. → realiza UC03
+- **RF-01.2:** Atributos tipados con soporte canónico (`INTEGER`, `BIGINT`, `VARCHAR(length)`, `TEXT`, `DECIMAL(p,s)`, `BOOLEAN`, `DATE`, `DATETIME`, `UUID`) y modificadores (`PK`, `FK`, `Unique`, `Nullable`, `Default`). → realiza UC04
+- **RF-01.3:** Métodos y operaciones con visibilidad (`+`, `-`, `#`, `~`), tipo de retorno y parámetros tipados. → realiza UC05
+- **RF-01.4:** Relaciones UML y ER: Asociación bidireccional/unidireccional, Agregación, Composición, Herencia/Generalización, Dependencia y Muchos a Muchos (`MANY_TO_MANY`) con multiplicidades (`1..1`, `0..1`, `1..*`, `*`), roles y waypoints interactivos. → realiza UC06
 - **RF-01.5:** Controles de lienzo: Zoom suave, paneo infinito, minimapa, grilla magnética y auto-alineación.
-- **RF-01.6 (Toggle Vista UML / Vista ER):** Selector en la barra superior que conmuta la representación visual del mismo grafo canónico:
+- **RF-01.6 (Toggle Vista UML / Vista ER):** Selector en la barra superior que conmuta la representación visual del mismo grafo canónico: → realiza UC07
   - *Vista UML:* Muestra visibilidad, atributos tipados, métodos y flechas de relación estándar.
   - *Vista ER:* Muestra formato tabla relacional con badges `PK`/`FK`, tipos SQL y conectores con pata de gallo (*Crow's Foot*).
 
 ### RF-02: Modelado por Comandos de Voz y Texto (Web)
-- **RF-02.1:** Captura de voz mediante **Web Speech API** nativa en navegadores compatibles y campo alternativo de entrada por texto (`CommandPromptInput`) para ambientes con ruido o fallas de micrófono.
-- **RF-02.2:** Interpretación de comandos de creación de entidades (*"Crea la clase Factura con atributo total decimal y fecha date"*).
-- **RF-02.3:** Interpretación de comandos de modificación y movimiento (*"Mueve la clase Cliente a la derecha"*, *"Agrega el atributo telefono a Proveedor"*).
-- **RF-02.4:** Interpretación de comandos de relación (*"Relaciona Factura con Cliente de muchos a uno"*).
+- **RF-02.1:** Captura de voz mediante **Web Speech API** nativa en navegadores compatibles y campo alternativo de entrada por texto (`CommandPromptInput`) para ambientes con ruido o fallas de micrófono. → realiza UC08, UC09 (alterno)
+- **RF-02.2:** Interpretación de comandos de creación de entidades (*"Crea la clase Factura con atributo total decimal y fecha date"*). → realiza UC08
+- **RF-02.3:** Interpretación de comandos de modificación y movimiento (*"Mueve la clase Cliente a la derecha"*, *"Agrega el atributo telefono a Proveedor"*). → realiza UC08
+- **RF-02.4:** Interpretación de comandos de relación (*"Relaciona Factura con Cliente de muchos a uno"*). → realiza UC08
 - **RF-02.5:** Motor de Auto-Layout por grilla determinista (celdas de 340 x 260 px) que ubica los nodos sin superposiciones.
 - **RF-02.6 (Guardrail Antialucinación - "La IA No Genera Diagramas Masivos"):**
   - El clasificador detecta la intención `GENERATE_DOMAIN` ante órdenes genéricas (*"hazme un sistema bancario"*, *"créame un modelo para un hospital"*).
@@ -93,14 +181,14 @@ Para responder con contundencia técnica al principio de **"cómo hacer que la v
   - Tope duro de seguridad: Máximo 5 operaciones aplicables por comando para evitar mutaciones masivas destructivas.
 
 ### RF-03: Modelado por Visión Multimodal (Fotos de Pizarra y Papel)
-- **RF-03.1:** Carga de fotografías o captura directa desde la cámara de diagramas dibujados en pizarras blancas o papel.
-- **RF-03.2:** Procesamiento con modelo multimodal (Google Gemini 2.0 Flash) con prompt estructurado de extracción de grafos en JSON canónico.
-- **RF-03.3:** Modal de revisión interactiva (*Human-in-the-Loop*): muestra lado a lado la imagen original y la propuesta detectada para que el usuario valide, corrija nombres o tipos mal detectados y confirme la fusión al lienzo.
+- **RF-03.1:** Carga de fotografías o captura directa desde la cámara de diagramas dibujados en pizarras blancas o papel. → realiza UC10
+- **RF-03.2:** Procesamiento con modelo multimodal (Google Gemini 2.0 Flash) con prompt estructurado de extracción de grafos en JSON canónico. → realiza UC10
+- **RF-03.3:** Modal de revisión interactiva (*Human-in-the-Loop*): muestra lado a lado la imagen original y la propuesta detectada para que el usuario valide, corrija nombres o tipos mal detectados y confirme la fusión al lienzo. → realiza UC10
 
 ### RF-04: Edición Colaborativa en Tiempo Real y Exclusión Mutua Híbrida
-- **RF-04.1:** Salas colaborativas seguras por diagrama (`/topic/diagrams/{id}`) sobre WebSockets STOMP.
-- **RF-04.2:** Difusión sub-segundo (<= 100 ms) de mutaciones atómicas a todos los clientes concurrentes.
-- **RF-04.3:** Visualización de presencia: Cursores remotos con nombre de usuario, color asignado y nodos seleccionados.
+- **RF-04.1:** Salas colaborativas seguras por diagrama (`/topic/diagrams/{id}`) sobre WebSockets STOMP. → realiza UC01
+- **RF-04.2:** Difusión sub-segundo (<= 100 ms) de mutaciones atómicas a todos los clientes concurrentes. → realiza UC01
+- **RF-04.3:** Visualización de presencia: Cursores remotos con nombre de usuario, color asignado y nodos seleccionados. → realiza UC01, UC02
 - **RF-04.4 (Exclusión Mutua con Soft-Locks para Campos Críticos):**
   - Antes de editar un campo crítico (nombre de clase, adición/edición de atributos o borrado de nodo), el cliente adquiere un soft-lock mediante `ACQUIRE_LOCK { targetId, userId }`.
   - El servidor emite `LOCK_ACQUIRED { targetId, userId, ttl: 5000 }`.
@@ -110,31 +198,31 @@ Para responder con contundencia técnica al principio de **"cómo hacer que la v
 - **RF-04.6 (Seguridad por Roles en STOMP):** Validación del rol `project_members.role` en el interceptor de canal. Usuarios con rol `VIEWER` son rechazados al emitir mutaciones por `/app/diagram/{id}/mutate`.
 
 ### RF-05: Modo Offline y Sincronización Automática con Rebase (Web)
-- **RF-05.1:** Detección en tiempo real del estado de red mediante eventos `online`/`offline` y latidos WebSocket.
-- **RF-05.2:** Persistencia local de mutaciones en una cola ordenada en **IndexedDB** (`pending_operations`).
+- **RF-05.1:** Detección en tiempo real del estado de red mediante eventos `online`/`offline` y latidos WebSocket. → realiza UC11
+- **RF-05.2:** Persistencia local de mutaciones en una cola ordenada en **IndexedDB** (`pending_operations`). → realiza UC11
 - **RF-05.3 (Timestamp Autoritativo de Servidor):** Los timestamps del cliente se utilizan solo para preservar el orden secuencial local de la cola. El servidor asigna el timestamp autoritativo al procesar cada operación diferida.
-- **RF-05.4 (Algoritmo de Rebase al Reconectar):** Al reconectar, la cola se envía a `POST /api/v1/diagrams/{id}/sync-offline`. Las operaciones se re-validan contra el estado actual:
+- **RF-05.4 (Algoritmo de Rebase al Reconectar):** Al reconectar, la cola se envía a `POST /api/v1/diagrams/{id}/sync-offline`. Las operaciones se re-validan contra el estado actual: → realiza UC12
   - `MOVE_CLASS`: Idempotente, se aplica siempre.
   - `ADD_ATTRIBUTE` / `ADD_METHOD`: Se aplica si la clase padre aún existe en el servidor.
   - `UPDATE_*`: Se descarta si el target fue eliminado por otro usuario online.
   - `DELETE_*`: Gana siempre (elimina y limpia dependencias en cascada).
-- **RF-05.5 (Modal de Reporte de Reconciliación):** El usuario recibe una notificación clara del resultado del rebase: *"Sincronización completada: 12 cambios aplicados, 2 descartados porque la clase destino fue eliminada"*.
+- **RF-05.5 (Modal de Reporte de Reconciliación):** El usuario recibe una notificación clara del resultado del rebase: *"Sincronización completada: 12 cambios aplicados, 2 descartados porque la clase destino fue eliminada"*. → realiza UC12
 - **RF-05.6 (Degradación Consciente):** Modo offline soporta 100% de modelado manual y parser local básico de texto; comandos avanzados con IA multimodal informan requerimiento de conexión.
 
 ### RF-06: Generador de Backend Spring Boot 3 (Java 21)
-- **RF-06.1:** Exportación de proyecto Maven empaquetado en `.zip` listo para compilar con `mvn clean compile`.
-- **RF-06.2 (Capa 1 - Entidades JPA):** Clases `@Entity` con claves primarias autogeneradas, columnas mapeadas, sanitización de palabras reservadas SQL y relaciones JPA (`@ManyToOne`, `@OneToMany`, `@ManyToMany` con `@JoinTable`).
-- **RF-06.3 (Capa 2 - Repositorios):** Interfaces `JpaRepository<Entity, ID>` con consultas derivadas y soporte de paginación.
-- **RF-06.4 (Capa 3 - DTOs & Mappers):** Clases `RequestDTO` con Bean Validation (`@NotNull`, `@NotBlank`, `@Size`, `@Positive`), `ResponseDTO` y mappers desacoplados.
-- **RF-06.5 (Capa 4 - Servicios de Negocio):** Interfaces y clases `@Service` transaccionales (`@Transactional`) con métodos CRUD y stubs generados para los métodos declarados en el diagrama UML.
-- **RF-06.6 (Capa 5 - Controladores REST):** Clases `@RestController` con endpoints estándar, validación y documentación Swagger / OpenAPI 3 integrada.
-- **RF-06.7 (Catálogo de Validación Pre-Generación):** Semáforo previo en UI que comprueba invariantes antes de generar para garantizar 100% de compilación.
+- **RF-06.1:** Exportación de proyecto Maven empaquetado en `.zip` listo para compilar con `mvn clean compile`. → realiza UC13
+- **RF-06.2 (Capa 1 - Entidades JPA):** Clases `@Entity` con claves primarias autogeneradas, columnas mapeadas, sanitización de palabras reservadas SQL y relaciones JPA (`@ManyToOne`, `@OneToMany`, `@ManyToMany` con `@JoinTable`). → realiza UC13
+- **RF-06.3 (Capa 2 - Repositorios):** Interfaces `JpaRepository<Entity, ID>` con consultas derivadas y soporte de paginación. → realiza UC13
+- **RF-06.4 (Capa 3 - DTOs & Mappers):** Clases `RequestDTO` con Bean Validation (`@NotNull`, `@NotBlank`, `@Size`, `@Positive`), `ResponseDTO` y mappers desacoplados. → realiza UC13
+- **RF-06.5 (Capa 4 - Servicios de Negocio):** Interfaces y clases `@Service` transaccionales (`@Transactional`) con métodos CRUD y stubs generados para los métodos declarados en el diagrama UML. → realiza UC13
+- **RF-06.6 (Capa 5 - Controladores REST):** Clases `@RestController` con endpoints estándar, validación y documentación Swagger / OpenAPI 3 integrada. → realiza UC13
+- **RF-06.7 (Catálogo de Validación Pre-Generación):** Semáforo previo en UI que comprueba invariantes antes de generar para garantizar 100% de compilación. → realiza UC13
 
 ### RF-07: Generación de App Móvil con Asistente de Voz (Estilo Alexa)
-- **RF-07.1:** Generación de un proyecto frontend móvil configurado para consumir los endpoints REST del backend generado.
-- **RF-07.2:** Asistente de voz flotante con síntesis de voz (TTS) para confirmación auditiva de operaciones del negocio.
-- **RF-07.3:** Operación completa del negocio por voz: el usuario final ejecuta acciones hablando (*"Agenda una cita para mañana a las 10 am con Carlos"*).
-- **RF-07.4:** Interfaz visual reactiva que refleja en tiempo real las operaciones ejecutadas por voz.
+- **RF-07.1:** Generación de un proyecto frontend móvil configurado para consumir los endpoints REST del backend generado. → realiza UC14
+- **RF-07.2:** Asistente de voz flotante con síntesis de voz (TTS) para confirmación auditiva de operaciones del negocio. → realiza UC14
+- **RF-07.3:** Operación completa del negocio por voz: el usuario final ejecuta acciones hablando (*"Agenda una cita para mañana a las 10 am con Carlos"*). → realiza UC14
+- **RF-07.4:** Interfaz visual reactiva que refleja en tiempo real las operaciones ejecutadas por voz. → realiza UC14
 
 ### RF-08: IA Local y Reducida en Dispositivo Móvil (Sin Internet)
 - **RF-08.1:** Asistente de voz móvil con capacidad de funcionamiento autónomo **100% offline** (modo avión).
@@ -148,12 +236,12 @@ Para responder con contundencia técnica al principio de **"cómo hacer que la v
 - **RF-08.4:** Persistencia offline móvil en **SQLite embebido** sincronizable contra Spring Boot al detectar conexión.
 
 ### RF-09: Interoperabilidad OMG XMI 2.1 con Sparx Enterprise Architect
-- **RF-09.1:** Exportación estricta a **OMG XMI 2.1** preservando paquetes, clases, atributos, métodos, asociaciones y coordenadas visuales de nodos y waypoints.
-- **RF-09.2:** Importación de archivos `.xmi` generados en Enterprise Architect con mapeo completo de estructura y renderizado inmediato en el lienzo.
+- **RF-09.1:** Exportación estricta a **OMG XMI 2.1** preservando paquetes, clases, atributos, métodos, asociaciones y coordenadas visuales de nodos y waypoints. → realiza UC15
+- **RF-09.2:** Importación de archivos `.xmi` generados en Enterprise Architect con mapeo completo de estructura y renderizado inmediato en el lienzo. → realiza UC16
 
 ---
 
-## 4. Requisitos no funcionales (NFR)
+## 6. Requisitos no funcionales (NFR)
 
 | Categoría | Métrica / Especificación | Validación |
 | :--- | :--- | :--- |
@@ -168,24 +256,24 @@ Para responder con contundencia técnica al principio de **"cómo hacer que la v
 
 ---
 
-### 4.1. Estrategia de Verificación y Pruebas
+### 6.1. Estrategia de Verificación y Pruebas
 
 La verificación se concentra en los tres puntos donde un fallo sería visible en la defensa:
 
 | Nivel | Alcance | Herramienta | Criterio de aceptación |
 | :--- | :--- | :--- | :--- |
-| **Unitario** | `MetamodelValidator`, `IdentifierSanitizer`, `LwwConflictResolver`, algoritmo de rebase | JUnit 5 + AssertJ | Cada invariante del catálogo §11.2 tiene su test; cada regla de rebase de §9.2 tiene un caso de colisión probado. |
+| **Unitario** | `MetamodelValidator`, `IdentifierSanitizer`, `LwwConflictResolver`, algoritmo de rebase | JUnit 5 + AssertJ | Cada invariante del catálogo §13.2 tiene su test; cada regla de rebase de §11.2 tiene un caso de colisión probado. |
 | **Integración** | Ciclo `diagrama → validación → generación → compilación` | JUnit + proceso Maven embebido | **Test de humo del generador:** 3 diagramas de referencia (barbería, veterinaria, inventario) se generan y se compilan con `mvn clean compile` en CI. Si uno falla, el build falla. |
 | **Concurrencia** | Salas STOMP, soft-locks y difusión | Script Node `stomp_stress_test.js` | 20 clientes simulados emiten mutaciones 60 s: cero pérdidas de mensaje, cero locks huérfanos tras el TTL, latencia p95 < 250 ms. |
-| **Manual guiado** | Voz, visión, offline y app móvil | Guión de §19 | El guión de demostración se ejecuta completo como prueba de regresión antes de cada hito. |
+| **Manual guiado** | Voz, visión, offline y app móvil | Guión de §21 | El guión de demostración se ejecuta completo como prueba de regresión antes de cada hito. |
 
 > **Test de humo del generador** es la prueba de mayor retorno del proyecto: convierte el NFR *"100% compila"* de una promesa en un hecho verificado automáticamente, y es la respuesta directa si el tribunal pregunta cómo se garantiza.
 
 ---
 
-## 5. Arquitectura del sistema y topología de despliegue en AWS
+## 7. Arquitectura del sistema y topología de despliegue en AWS
 
-### 5.1. Arquitectura Lógica Global de la Plataforma
+### 7.1. Arquitectura Lógica Global de la Plataforma
 
 ```
                                   ┌────────────────────────────────────────────────────────┐
@@ -235,7 +323,7 @@ La verificación se concentra en los tres puntos donde un fallo sería visible e
 
 ---
 
-### 5.2. Arquitectura de la Solución Generada (Backend + App Móvil con IA Local)
+### 7.2. Arquitectura de la Solución Generada (Backend + App Móvil con IA Local)
 
 ```
                             ┌────────────────────────────────────────────────────────┐
@@ -283,7 +371,7 @@ La verificación se concentra en los tres puntos donde un fallo sería visible e
 
 ---
 
-### 5.3. Topología de Despliegue en AWS y Justificación Pragmática
+### 7.3. Topología de Despliegue en AWS y Justificación Pragmática
 
 ```
                              ┌──────────────────────────────┐
@@ -323,7 +411,7 @@ La verificación se concentra en los tres puntos donde un fallo sería visible e
 
 ---
 
-## 6. Estructura modular del backend Spring Boot 3 (Java 21)
+## 8. Estructura modular del backend Spring Boot 3 (Java 21)
 
 ```
 com.modelcollab/
@@ -371,7 +459,7 @@ com.modelcollab/
 
 ---
 
-## 7. JSON Schema canónico del diagrama (`current_state`)
+## 9. JSON Schema canónico del diagrama (`current_state`)
 
 Este esquema formal es la **fuente única de verdad** compartida por el lienzo web, backend, validadores, XMI y generadores:
 
@@ -506,9 +594,9 @@ Este esquema formal es la **fuente única de verdad** compartida por el lienzo w
 
 ---
 
-## 8. Protocolo de colaboración en tiempo real (STOMP) y Exclusión Mutua Híbrida
+## 10. Protocolo de colaboración en tiempo real (STOMP) y Exclusión Mutua Híbrida
 
-### 8.1. Catálogo Formal de Operaciones Atómicas STOMP
+### 10.1. Catálogo Formal de Operaciones Atómicas STOMP
 
 | Tipo de Operación | Destino del Payload | Exclusión Mutua | Descripción de Campos Mutables |
 | :--- | :--- | :---: | :--- |
@@ -535,16 +623,16 @@ Este esquema formal es la **fuente única de verdad** compartida por el lienzo w
 | `BULK_MERGE` | Raíz del diagrama | **Lock de Diagrama** | Inserción atómica de un sub-grafo completo proveniente de **Visión (foto de pizarra)** o **Importación XMI**. Adquiere un lock de diagrama completo durante la operación, se aplica en una sola transacción y se difunde como un único evento para evitar N parpadeos en los clientes remotos. |
 | `USER_CURSOR` | Canal volátil | No requiere | Emite coordenadas de cursor y selección visual activa. |
 
-### 8.2. Mecanismo de Exclusión Mutua por Soft-Locks con TTL
+### 10.2. Mecanismo de Exclusión Mutua por Soft-Locks con TTL
 
 1. **Adquisición del Lock:** Cuando un usuario hace clic para renombrar una clase o editar sus atributos, el cliente envía `/app/diagram/{id}/lock` con payload `{ action: "ACQUIRE", targetId: "uuid-1", userId: "usr-a" }`.
 2. **Concesión y Difusión:** El `LockManagerService` valida si el recurso está libre. Si lo está, asigna el lock al usuario con un **TTL de 5000 ms** y difunde a la sala `/topic/diagrams/{id}` el evento `LOCK_ACQUIRED { targetId, userId, userName, color, ttl: 5000 }`.
 3. **Representación Visual en Clientes Remotos:** Los demás usuarios ven el nodo resaltado con un borde del color asignado al usuario y un indicador de candado con tooltip *"Editado por [Usuario]"*. Las acciones de edición quedan deshabilitadas en sus interfaces.
 4. **Auto-Release por Inactividad o Desconexión:** Si el usuario cierra la pestaña o pierde conexión, el temporizador del servidor expira y emite `LOCK_RELEASED { targetId }`. Si el usuario continúa editando, el cliente envía un *heartbeat* cada 2000 ms renovando el TTL.
 5. **Denegación del Lock (Ruta de Fallo):** Si el recurso ya está tomado por otro usuario, el servidor responde **únicamente al solicitante** por su canal privado `/user/queue/locks` con `LOCK_DENIED { targetId, heldBy: "Usuario B", expiresInMs: 3200 }`. El cliente no entra en espera activa ni en cola bloqueante: muestra un *toast* no intrusivo (*"Elemento en edición por Usuario B"*) y el nodo permanece en modo lectura. **Esta política de fallo rápido sin cola es la que garantiza la ausencia de deadlocks e inanición**, ya que ningún cliente queda jamás esperando indefinidamente a otro.
-6. **Estructura y Alcance del Lock:** Los locks son **estado efímero en memoria** (`ConcurrentHashMap<String, LockEntry>` gestionado por `LockManagerService`), deliberadamente **no persistidos en PostgreSQL**: un lock expira en 5 s y sobrevivir a un reinicio del servidor sería un defecto, no una virtud (dejaría elementos bloqueados por un usuario ya desconectado). En el escalado horizontal documentado en §5.3, este mapa migra al mismo Redis usado como relay STOMP mediante `SET NX PX 5000`, conservando la semántica sin cambiar el protocolo del cliente.
+6. **Estructura y Alcance del Lock:** Los locks son **estado efímero en memoria** (`ConcurrentHashMap<String, LockEntry>` gestionado por `LockManagerService`), deliberadamente **no persistidos en PostgreSQL**: un lock expira en 5 s y sobrevivir a un reinicio del servidor sería un defecto, no una virtud (dejaría elementos bloqueados por un usuario ya desconectado). En el escalado horizontal documentado en §7.3, este mapa migra al mismo Redis usado como relay STOMP mediante `SET NX PX 5000`, conservando la semántica sin cambiar el protocolo del cliente.
 
-### 8.3. Diagrama de Secuencia de Exclusión Mutua y Mutación con Filtrado de Eco
+### 10.3. Diagrama de Secuencia de Exclusión Mutua y Mutación con Filtrado de Eco
 
 ```
  CLIENTE A (Emisor)                    SERVIDOR SPRING BOOT                      CLIENTE B (Receptor)
@@ -582,21 +670,21 @@ Este esquema formal es la **fuente única de verdad** compartida por el lienzo w
 
 ---
 
-### 8.4. Interacción entre Exclusión Mutua y Modo Offline
+### 10.4. Interacción entre Exclusión Mutua y Modo Offline
 
-Un cliente sin conexión **no puede adquirir locks** (el árbitro es el servidor). Para que esto no contradiga la operación offline plena declarada en §9.3, se define la siguiente política explícita:
+Un cliente sin conexión **no puede adquirir locks** (el árbitro es el servidor). Para que esto no contradiga la operación offline plena declarada en §11.3, se define la siguiente política explícita:
 
 1. **Suspensión Local del Lock:** En estado `OFFLINE` el cliente **omite la fase de adquisición** y aplica todas las mutaciones de forma optimista sobre su copia local en IndexedDB, incluidas las clasificadas como *"Requiere Lock"*.
-2. **El Lock se Convierte en Conflicto Diferido:** La exclusión mutua no desaparece; se **traslada del momento de la edición al momento del rebase** (§9.2). Una operación offline que colisione con un cambio ajeno realizado durante la desconexión se resuelve por las reglas de rebase, no por lock.
+2. **El Lock se Convierte en Conflicto Diferido:** La exclusión mutua no desaparece; se **traslada del momento de la edición al momento del rebase** (§11.2). Una operación offline que colisione con un cambio ajeno realizado durante la desconexión se resuelve por las reglas de rebase, no por lock.
 3. **Advertencia Preventiva en la Interfaz:** Al entrar en modo offline, el badge `OfflineSyncBadge` advierte: *"Sin conexión — tus cambios se aplicarán al reconectar y podrían ser descartados si otro colaborador edita lo mismo"*, haciendo explícito el riesgo asumido.
 
 > **Justificación arquitectónica:** los locks son un mecanismo de **prevención** de conflictos que exige un árbitro central en línea; el rebase es un mecanismo de **detección y resolución** que funciona sin él. El sistema usa prevención cuando puede (online) y resolución cuando no puede (offline), sin perder consistencia en ninguno de los dos casos.
 
 ---
 
-## 9. Arquitectura de modo offline, rebase y degradación consciente (Web)
+## 11. Arquitectura de modo offline, rebase y degradación consciente (Web)
 
-### 9.1. Máquina de Estados del Cliente Web
+### 11.1. Máquina de Estados del Cliente Web
 
 ```
                     ┌────────────────────────────┐
@@ -633,7 +721,7 @@ Un cliente sin conexión **no puede adquirir locks** (el árbitro es el servidor
                     └────────────────────────────┘
 ```
 
-### 9.2. Algoritmo de Rebase en Backend (`POST /api/v1/diagrams/{id}/sync-offline`)
+### 11.2. Algoritmo de Rebase en Backend (`POST /api/v1/diagrams/{id}/sync-offline`)
 
 Para evitar inconsistencias tras desconexiones prolongadas:
 1. **Timestamp Autoritativo:** El backend asigna el timestamp oficial de recepción. Los timestamps del cliente solo preservan el orden relativo original.
@@ -656,7 +744,7 @@ Para evitar inconsistencias tras desconexiones prolongadas:
    ```
    La interfaz web muestra este reporte en un diálogo transparente, informando al usuario el desenlace exacto de su sesión sin conexión.
 
-### 9.3. Matriz de Degradación Consciente Offline
+### 11.3. Matriz de Degradación Consciente Offline
 
 | Funcionalidad | Modo Online | Modo Offline |
 | :--- | :---: | :---: |
@@ -665,13 +753,13 @@ Para evitar inconsistencias tras desconexiones prolongadas:
 | **Comandos de Voz Web** | Procesado con Gemini Flash | *Deshabilitado (Aviso de conexión requerida)* |
 | **Importación de Fotos Pizarras**| Visión Multimodal con Gemini | *Deshabilitado (Requiere conexión)* |
 | **Generación de Código ZIP** | Procesado y empaquetado en backend | *Deshabilitado (Requiere servidor)* |
-| **Exclusión Mutua (Soft-Locks)** | Activa (árbitro central en servidor) | *Suspendida — el conflicto se difiere al rebase (ver §8.4)* |
+| **Exclusión Mutua (Soft-Locks)** | Activa (árbitro central en servidor) | *Suspendida — el conflicto se difiere al rebase (ver §10.4)* |
 
 ---
 
-## 10. Arquitectura de la app móvil generada con IA local (Estilo Alexa)
+## 12. Arquitectura de la app móvil generada con IA local (Estilo Alexa)
 
-### 10.1. Objetivo y Experiencia de Usuario Final
+### 12.1. Objetivo y Experiencia de Usuario Final
 El generador entrega una **aplicación móvil complementaria lista para operar el negocio mediante la voz**:
 - El encargado abre la app y dicta órdenes naturales:
   - *"Agenda una cita para mañana a las 10 am con Carlos"*
@@ -679,14 +767,14 @@ El generador entrega una **aplicación móvil complementaria lista para operar e
   - *"Muestra los clientes registrados"*
 - La app responde con confirmación visual en pantalla y voz sintetizada (TTS): *"Operación registrada con éxito"*.
 
-### 10.2. Mitigación Técnica del STT Móvil Offline (Spike Técnico Semana 1)
+### 12.2. Mitigación Técnica del STT Móvil Offline (Spike Técnico Semana 1)
 - **Claridad Arquitectónica:** `expo-speech` es exclusivamente un motor **Text-to-Speech (TTS)** para emitir respuestas habladas. No procesa entrada de voz.
 - **Estrategia de STT Offline:**
   - **Ruta Principal (React Native):** `@react-native-voice/voice` compilado mediante **Custom Dev Client (EAS Build)** conectado al reconocedor de voz nativo del sistema con paquetes de idioma español descargados en el dispositivo físico.
   - **Ruta B (Flutter Contingencia):** El paquete `speech_to_text` en Flutter ofrece reconocimiento offline nativo sin requerir compilaciones complejas en la nube.
   - **Ruta C (Modelo Embebido Vosk):** Modelo acústico reducido en español (~45 MB) integrado localmente, garantizando 100% de reconocimiento offline sin depender de los servicios de Google o Apple.
 
-### 10.3. Derivación Automática del Metamodelo de Intenciones (`intents.json`)
+### 12.3. Derivación Automática del Metamodelo de Intenciones (`intents.json`)
 
 El generador Spring Boot analiza las clases del diagrama y produce dinámicamente la configuración de NLU local para la app móvil:
 
@@ -722,9 +810,9 @@ El generador Spring Boot analiza las clases del diagrama y produce dinámicament
 
 ---
 
-## 11. Generación de backend Spring Boot 3 y Catálogo de Validación Pre-Generación
+## 13. Generación de backend Spring Boot 3 y Catálogo de Validación Pre-Generación
 
-### 11.1. Arquitectura de las 5 Capas de Código Generado
+### 13.1. Arquitectura de las 5 Capas de Código Generado
 
 ```
 proyecto-generado/
@@ -753,7 +841,7 @@ proyecto-generado/
         └── CitaController.java               (Endpoints GET, POST, PUT, DELETE)
 ```
 
-### 11.2. Catálogo de Invariantes del Generador ("100% Compila")
+### 13.2. Catálogo de Invariantes del Generador ("100% Compila")
 
 Para garantizar que ningún diagrama genere código que falle en compilar:
 
@@ -783,7 +871,7 @@ Para garantizar que ningún diagrama genere código que falle en compilar:
 
 ---
 
-## 12. Interoperabilidad OMG XMI 2.1 con Sparx Enterprise Architect
+## 14. Interoperabilidad OMG XMI 2.1 con Sparx Enterprise Architect
 
 - **Estándar OMG XMI 2.1:** Generación estricta de documentos XML con namespaces estándar:
   - `xmlns:xmi="http://schema.omg.org/spec/XMI/2.1"`
@@ -793,7 +881,7 @@ Para garantizar que ningún diagrama genere código que falle en compilar:
 
 ---
 
-## 13. Modelo de datos PostgreSQL 16
+## 15. Modelo de datos PostgreSQL 16
 
 ```sql
 -- 1. Usuarios de la plataforma
@@ -852,7 +940,7 @@ CREATE INDEX idx_diagram_ops_client_mut ON diagram_operations(client_mutation_id
 
 ---
 
-## 14. Especificación completa de endpoints de la API REST
+## 16. Especificación completa de endpoints de la API REST
 
 | Módulo | Método | Endpoint | Descripción | Autenticación |
 | :--- | :--- | :--- | :--- | :--- |
@@ -872,7 +960,7 @@ CREATE INDEX idx_diagram_ops_client_mut ON diagram_operations(client_mutation_id
 
 ---
 
-## 15. Decisiones formales de tecnología e inteligencia artificial
+## 17. Decisiones formales de tecnología e inteligencia artificial
 
 | Eje del Sistema | Tecnología Elegida | Justificación Técnica |
 | :--- | :--- | :--- |
@@ -889,7 +977,7 @@ CREATE INDEX idx_diagram_ops_client_mut ON diagram_operations(client_mutation_id
 
 ---
 
-## 16. Matriz de riesgos técnicos y mitigaciones
+## 18. Matriz de riesgos técnicos y mitigaciones
 
 | Riesgo Técnico | Probabilidad | Impacto | Estrategia de Mitigación Táctica |
 | :--- | :---: | :---: | :--- |
@@ -902,7 +990,7 @@ CREATE INDEX idx_diagram_ops_client_mut ON diagram_operations(client_mutation_id
 
 ---
 
-## 17. Plan de implementación re-basado (17 Días Reales: 06 al 22 de Septiembre)
+## 19. Plan de implementación re-basado (17 Días Reales: 06 al 22 de Septiembre)
 
 | Fase | Fechas | Entregable Clave | Validación Táctica |
 | :---: | :---: | :--- | :--- |
@@ -915,7 +1003,7 @@ CREATE INDEX idx_diagram_ops_client_mut ON diagram_operations(client_mutation_id
 
 ---
 
-## 18. Veredicto final y lista de verificación académica
+## 20. Veredicto final y lista de verificación académica
 
 El presente documento constituye la **especificación arquitectónica completa, blindada y verificada** del proyecto. Neutraliza las objeciones y cubre el **100% de los requisitos del tribunal evaluador**:
 
@@ -930,14 +1018,14 @@ El presente documento constituye la **especificación arquitectónica completa, 
 - [x] **Interoperabilidad OMG XMI 2.1:** Soporte de paquetes, multiplicidades y waypoints visuales con Sparx EA.
 - [x] **Estrategia de Longevidad:** Núcleo canónico desacoplado, plantillas FreeMarker intercambiables y versionado de contratos.
 - [x] **Ausencia de Deadlock e Inanición:** Política de fallo rápido (`LOCK_DENIED`) sin colas de espera, con TTL y auto-release.
-- [x] **Coherencia Locks / Offline:** Prevención por lock cuando hay árbitro en línea; resolución por rebase cuando no lo hay (§8.4).
+- [x] **Coherencia Locks / Offline:** Prevención por lock cuando hay árbitro en línea; resolución por rebase cuando no lo hay (§10.4).
 - [x] **Catálogo Completo de Operaciones:** Cobertura de clases, atributos, métodos, relaciones, paquetes, redimensionado e inserción masiva (`BULK_MERGE`).
 - [x] **Estrategia de Pruebas Verificable:** Test de humo del generador en CI sobre 3 dominios de referencia y script de estrés de 20 clientes concurrentes.
 - [x] **Cronograma Re-basado:** 20 días efectivos con spike de voz en Semana 1 y despliegue AWS el 13 de septiembre.
 
 ---
 
-## 19. Guión Oficial de Demostración en Vivo (10 Minutos)
+## 21. Guión Oficial de Demostración en Vivo (10 Minutos)
 
 Este guión está cronometrado para conducir una defensa impecable, exhibiendo cada funcionalidad clave y desarticulando preventivamente las preguntas trampa del docente:
 

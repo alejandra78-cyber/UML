@@ -8,8 +8,8 @@
 		<version>4.1.1</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.example</groupId>
-	<artifactId>demo</artifactId>
+	<groupId>com.modelcollab</groupId>
+	<artifactId>modelcollab</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name/>
 	<description/>
@@ -55,6 +55,18 @@
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
+		</dependency>
+		<!--
+			FreeMarker sin starter de Spring Boot: en Spring Boot 4.1.1 no se puede
+			asumir que exista (o se llame igual) un modulo de autoconfiguracion para
+			FreeMarker (ver advertencia tecnica del generador UC13). Se declara la
+			libreria "pelada" y el bean freemarker.template.Configuration se arma a
+			mano en com.modelcollab.generator.config.FreeMarkerConfig.
+		-->
+		<dependency>
+			<groupId>org.freemarker</groupId>
+			<artifactId>freemarker</artifactId>
+			<version>2.3.34</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Handle, Position as FlowPosition, type NodeProps } from 'reactflow'
 import { useDiagramStore } from '../store/useDiagramStore'
 import type { Attribute, AttributeType, ClassEntity } from '../types/diagram'
+import { ATTRIBUTE_TYPES, resolveAttributeType } from '../utils/attributeType'
 import './ErTableNode.css'
 
 // El backend deserializa el id como java.util.UUID (ver Attribute en metamodel/model):
@@ -69,7 +70,9 @@ export function ErTableNode({ data }: NodeProps<ErTableNodeData>) {
   const [nameDraft, setNameDraft] = useState(classEntity.name)
 
   const [editingAttrId, setEditingAttrId] = useState<string | null>(null)
-  const [attrDraft, setAttrDraft] = useState('')
+  const [attrNameDraft, setAttrNameDraft] = useState('')
+  const [attrTypeDraft, setAttrTypeDraft] = useState('')
+  const attrNameInputRef = useRef<HTMLInputElement>(null)
 
   function startEditName() {
     setNameDraft(classEntity.name)
@@ -84,18 +87,20 @@ export function ErTableNode({ data }: NodeProps<ErTableNodeData>) {
     }
   }, [classEntity.id, classEntity.name, nameDraft, updateClass])
 
+  // Mismo <select> restringido al enum canónico que ya usa UmlClassNode (antes
+  // esta vista ER editaba "nombre: tipo" como texto libre parseado con split(':'),
+  // sin ninguna validación contra AttributeType -- riesgo real de fidelidad XMI).
   function startEditAttribute(attribute: Attribute) {
     setEditingAttrId(attribute.id)
-    setAttrDraft(`${attribute.name}: ${attribute.type}`)
+    setAttrNameDraft(attribute.name)
+    setAttrTypeDraft(resolveAttributeType(attribute.type).value)
   }
 
   function commitAttribute(attribute: Attribute) {
-    const [namePart, typePart] = attrDraft.split(':').map((part) => part.trim())
+    const namePart = attrNameDraft.trim()
     if (namePart) {
       const nextAttributes = classEntity.attributes.map((a) =>
-        a.id === attribute.id
-          ? { ...a, name: namePart, type: (typePart?.toUpperCase() as AttributeType) || a.type }
-          : a,
+        a.id === attribute.id ? { ...a, name: namePart, type: attrTypeDraft as AttributeType } : a,
       )
       updateClass(classEntity.id, { attributes: nextAttributes })
     }
@@ -168,18 +173,49 @@ export function ErTableNode({ data }: NodeProps<ErTableNodeData>) {
               >
                 {editingAttrId === attribute.id ? (
                   <td colSpan={3}>
-                    <input
-                      autoFocus
-                      className="nodrag"
-                      value={attrDraft}
-                      onChange={(e) => setAttrDraft(e.target.value)}
-                      onFocus={(e) => e.target.select()}
-                      onBlur={() => commitAttribute(attribute)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitAttribute(attribute)
-                        if (e.key === 'Escape') setEditingAttrId(null)
+                    <span
+                      className="er-table-node__edit-row"
+                      onBlur={(e) => {
+                        // Igual que UmlClassNode: solo confirma cuando el foco sale del
+                        // GRUPO completo (input + select), no al moverse entre uno y
+                        // otro con Tab/clic.
+                        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                          commitAttribute(attribute)
+                        }
                       }}
-                    />
+                    >
+                      <input
+                        ref={attrNameInputRef}
+                        autoFocus
+                        className="nodrag"
+                        value={attrNameDraft}
+                        onChange={(e) => setAttrNameDraft(e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitAttribute(attribute)
+                          if (e.key === 'Escape') setEditingAttrId(null)
+                        }}
+                      />
+                      <span className="er-table-node__colon">:</span>
+                      <select
+                        className="nodrag"
+                        value={attrTypeDraft}
+                        onChange={(e) => setAttrTypeDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitAttribute(attribute)
+                          if (e.key === 'Escape') setEditingAttrId(null)
+                        }}
+                      >
+                        {!ATTRIBUTE_TYPES.includes(attrTypeDraft as AttributeType) && (
+                          <option value={attrTypeDraft}>{attrTypeDraft} (no reconocido)</option>
+                        )}
+                        {ATTRIBUTE_TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
                   </td>
                 ) : (
                   <>

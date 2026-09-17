@@ -75,6 +75,12 @@ export type RelationshipType =
 
 export type Multiplicity = '0..1' | '1..1' | '0..*' | '1..*'
 
+// Las 4 opciones reales del enum canónico (sección 7 del PLAN_ARQUITECTONICO.md).
+// Fuente única de verdad para el <select> de multiplicidad en UmlRelationshipEdge/
+// ErRelationshipEdge -- antes cada uno editaba esto como texto libre normalizado
+// recién al confirmar, lo que permitía guardar valores no válidos para XMI.
+export const MULTIPLICITY_VALUES: Multiplicity[] = ['0..1', '1..1', '0..*', '1..*']
+
 export type OwningSide = 'SOURCE' | 'TARGET'
 
 export interface Waypoint {

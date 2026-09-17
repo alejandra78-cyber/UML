@@ -7,7 +7,7 @@
 // probar colaboración) terminen viendo y editando el MISMO diagrama en vez de
 // que cada uno cree el suyo la primera vez que entra.
 
-const API_BASE = 'http://localhost:8080/api/v1'
+export const API_BASE = 'http://localhost:8080/api/v1'
 
 interface ProjectResponse {
   id: string
@@ -54,7 +54,7 @@ function readCached(userId: string): ActiveDiagram | null {
   }
 }
 
-function writeCached(userId: string, value: ActiveDiagram): void {
+export function writeCached(userId: string, value: ActiveDiagram): void {
   try {
     localStorage.setItem(storageKey(userId), JSON.stringify(value))
   } catch {
@@ -71,7 +71,7 @@ function clearCached(userId: string): void {
   }
 }
 
-async function authFetch(token: string, path: string, init?: RequestInit, signal?: AbortSignal): Promise<Response> {
+export async function authFetch(token: string, path: string, init?: RequestInit, signal?: AbortSignal): Promise<Response> {
   return fetch(`${API_BASE}${path}`, {
     ...init,
     signal,

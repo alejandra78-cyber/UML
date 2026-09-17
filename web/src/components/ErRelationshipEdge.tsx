@@ -1,19 +1,8 @@
 import { useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, Position, getSmoothStepPath, useReactFlow, type EdgeProps } from 'reactflow'
 import { useDiagramStore } from '../store/useDiagramStore'
-import type { Multiplicity, Relationship, Waypoint } from '../types/diagram'
+import { MULTIPLICITY_VALUES, type Multiplicity, type Relationship, type Waypoint } from '../types/diagram'
 import './ErRelationshipEdge.css'
-
-const VALID_MULTIPLICITIES: Multiplicity[] = ['0..1', '1..1', '0..*', '1..*']
-
-function normalizeMultiplicity(raw: string): Multiplicity | null {
-  const trimmed = raw.trim()
-  if ((VALID_MULTIPLICITIES as string[]).includes(trimmed)) return trimmed as Multiplicity
-  if (trimmed === '1') return '1..1'
-  if (trimmed === '*' || trimmed === '0..n' || trimmed === 'n') return '0..*'
-  if (trimmed === '1..n') return '1..*'
-  return null
-}
 
 interface ErRelationshipEdgeData {
   relationship: Relationship
@@ -135,11 +124,11 @@ export function ErRelationshipEdge({
 }: EdgeProps<ErRelationshipEdgeData>) {
   const relationship = data!.relationship
   const updateRelationship = useDiagramStore((state) => state.updateRelationship)
+  const deleteRelationshipAction = useDiagramStore((state) => state.deleteRelationship)
   const updateWaypoints = useDiagramStore((state) => state.updateWaypoints)
   const { screenToFlowPosition } = useReactFlow()
 
   const [editingEnd, setEditingEnd] = useState<EditableEnd | null>(null)
-  const [draft, setDraft] = useState('')
 
   // Mismo mecanismo de waypoint arrastrable que UmlRelationshipEdge (sección 8.1):
   // se reutiliza updateWaypoints del store para mantener consistencia de UX entre
@@ -170,16 +159,8 @@ export function ErRelationshipEdge({
   const sourceLabelPos = { x: sourceX + (targetX - sourceX) * 0.3, y: sourceY + (targetY - sourceY) * 0.3 }
   const targetLabelPos = { x: sourceX + (targetX - sourceX) * 0.7, y: sourceY + (targetY - sourceY) * 0.7 }
 
-  function startEdit(end: EditableEnd) {
-    setEditingEnd(end)
-    setDraft((end === 'source' ? relationship.sourceMultiplicity : relationship.targetMultiplicity) ?? '')
-  }
-
-  function commit(end: EditableEnd) {
-    const normalized = normalizeMultiplicity(draft)
-    if (normalized) {
-      updateRelationship(relationship.id, end === 'source' ? { sourceMultiplicity: normalized } : { targetMultiplicity: normalized })
-    }
+  function commitMultiplicity(end: EditableEnd, value: Multiplicity) {
+    updateRelationship(relationship.id, end === 'source' ? { sourceMultiplicity: value } : { targetMultiplicity: value })
     setEditingEnd(null)
   }
 
@@ -193,26 +174,28 @@ export function ErRelationshipEdge({
    */
   function renderLabel(end: EditableEnd, pos: { x: number; y: number }) {
     const isEditing = editingEnd === end
+    const value = end === 'source' ? relationship.sourceMultiplicity : relationship.targetMultiplicity
     return (
       <div
         className={`er-edge-label nodrag nopan${isEditing ? ' er-edge-label--editing' : ''}`}
         style={{ transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}
-        onDoubleClick={() => startEdit(end)}
+        onDoubleClick={() => setEditingEnd(end)}
         title="Doble clic para editar la multiplicidad"
       >
         {isEditing && (
-          <input
+          <select
             autoFocus
             className="nodrag"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onFocus={(e) => e.target.select()}
-            onBlur={() => commit(end)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commit(end)
-              if (e.key === 'Escape') setEditingEnd(null)
-            }}
-          />
+            value={value ?? '0..1'}
+            onChange={(e) => commitMultiplicity(end, e.target.value as Multiplicity)}
+            onBlur={() => setEditingEnd(null)}
+          >
+            {MULTIPLICITY_VALUES.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
         )}
       </div>
     )
@@ -246,6 +229,15 @@ export function ErRelationshipEdge({
       <EdgeLabelRenderer>
         {renderLabel('source', sourceLabelPos)}
         {renderLabel('target', targetLabelPos)}
+        <button
+          type="button"
+          className="er-edge-delete nodrag nopan"
+          title="Eliminar relación"
+          style={{ transform: `translate(-50%, -50%) translate(${waypoint.x}px, ${waypoint.y - 22}px)` }}
+          onClick={() => deleteRelationshipAction(relationship.id)}
+        >
+          ×
+        </button>
         <div
           className="er-edge-waypoint nodrag nopan"
           title="Arrastrar para doblar la línea"

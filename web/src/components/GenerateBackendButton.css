@@ -1,0 +1,56 @@
+.generate-backend-btn {
+  position: relative;
+  display: inline-flex;
+}
+
+.generate-backend-btn__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  padding: 12px 14px;
+  min-width: 260px;
+  max-width: 360px;
+  z-index: 30;
+  font-size: 12px;
+  color: #333;
+}
+
+.generate-backend-btn__panel-title {
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: #b91c1c;
+}
+
+/* Variante para paneles informativos de éxito (p.ej. ImportXmiButton) que
+   reutilizan este mismo panel genérico -- el color por defecto de arriba es
+   rojo (pensado para errores/bloqueos), este lo pisa para el caso feliz. */
+.generate-backend-btn__panel-title--success {
+  color: #1a7f37;
+}
+
+.generate-backend-btn__panel ul {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+
+.generate-backend-btn__panel li {
+  margin-bottom: 4px;
+}
+
+.generate-backend-btn__panel--error p {
+  margin: 0 0 10px;
+  color: #b91c1c;
+}
+
+.generate-backend-btn__panel button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: transparent;
+  cursor: pointer;
+}

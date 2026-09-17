@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactFlow, {
   Background,
   Controls,
@@ -11,15 +11,24 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { LoginScreen } from './auth/LoginScreen'
 import { useAuthStore } from './auth/useAuthStore'
-import { UmlClassNode } from './components/UmlClassNode'
-import { UmlRelationshipEdge, RELATIONSHIP_TYPE_OPTIONS } from './components/UmlRelationshipEdge'
+import { UmlClassNode } from './features/modelado-manual/UmlClassNode'
+import { UmlRelationshipEdge, RELATIONSHIP_TYPE_OPTIONS } from './features/modelado-manual/UmlRelationshipEdge'
 import { ErTableNode } from './components/ErTableNode'
 import { ErRelationshipEdge } from './components/ErRelationshipEdge'
-import { ViewModeToggle } from './components/ViewModeToggle'
-import { CollaboratorPresence } from './components/CollaboratorPresence'
-import { OfflineSyncBanner } from './components/OfflineSyncBanner'
-import { VoiceToolbar } from './components/VoiceToolbar'
-import { VisionModal } from './components/VisionModal'
+import { ViewModeToggle } from './features/modelado-manual/ViewModeToggle'
+import { CollaboratorPresence } from './features/colaboracion/CollaboratorPresence'
+import { OfflineSyncBanner } from './features/offline/OfflineSyncBanner'
+import { ReconciliationModal } from './features/offline/ReconciliationModal'
+import { useOfflineSync } from './features/offline/useOfflineSync'
+import { VoiceToolbar } from './features/ia-asistida/VoiceToolbar'
+import { VisionModal } from './features/ia-asistida/VisionModal'
+import { GenerateBackendButton } from './components/GenerateBackendButton'
+import { GenerateMobileAppButton } from './components/GenerateMobileAppButton'
+import { ExportXmiButton } from './components/ExportXmiButton'
+import { ImportXmiButton } from './components/ImportXmiButton'
+import { CreateProjectModal } from './components/CreateProjectModal'
+import { InviteMemberModal } from './components/InviteMemberModal'
+import { DeleteProjectButton } from './components/DeleteProjectButton'
 import { diagramStompClient } from './collaboration/stompClient'
 import { ensureActiveDiagram } from './collaboration/diagramBootstrap'
 import { useDiagramStore } from './store/useDiagramStore'
@@ -91,10 +100,27 @@ function DiagramWorkspace() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting')
   const setGlobalConnectionStatus = useConnectionStore((state) => state.setStatus)
 
-  function updateConnectionStatus(status: ConnectionStatus) {
-    setConnectionStatus(status)
-    setGlobalConnectionStatus(status)
-  }
+  // Memoizado a propósito: se pasa a useOfflineSync, que a su vez lo mete en las
+  // dependencias de un useCallback (`handleReconnect`) que el efecto principal
+  // (más abajo) también lista como dependencia. Sin useCallback acá,
+  // updateConnectionStatus sería una función NUEVA en cada render (nodes/edges
+  // cambian en CADA mutación del diagrama), lo que habría vuelto inestable a
+  // handleReconnect y, en cadena, habría hecho que el efecto de conexión STOMP se
+  // desmontara y reconectara en cada edición -- no solo al reconectar de verdad.
+  const updateConnectionStatus = useCallback(
+    (status: ConnectionStatus) => {
+      setConnectionStatus(status)
+      setGlobalConnectionStatus(status)
+    },
+    [setGlobalConnectionStatus],
+  )
+
+  // PKG-04 Resiliencia Offline (UC12): al reconectar, revisa si quedaron
+  // mutaciones encoladas en IndexedDB mientras el transport era null (ver
+  // useDiagramStore.ts / offline/offlineQueue.ts) y, si las hay, sincroniza antes
+  // de pasar a 'online' -- ver el llamado a `handleReconnect` dentro de
+  // `onConnected` más abajo.
+  const { reconciliationReport, dismissReport, handleReconnect } = useOfflineSync(updateConnectionStatus)
 
   const nodes = useDiagramStore((state) => state.nodes)
   const edges = useDiagramStore((state) => state.edges)
@@ -106,6 +132,12 @@ function DiagramWorkspace() {
   const disconnectTransport = useDiagramStore((state) => state.disconnectTransport)
   const applyBroadcast = useDiagramStore((state) => state.applyBroadcast)
   const hydrate = useDiagramStore((state) => state.hydrate)
+  // diagramId del store (agregado para la cola offline, ver useDiagramStore.ts):
+  // se reusa acá para GenerateBackendButton/ExportXmiButton en vez de depender de
+  // diagramIdRef, que sigue existiendo para el resto de usos preexistentes
+  // (cursor remoto, STOMP) y no dispara re-render por sí solo.
+  const storeDiagramId = useDiagramStore((state) => state.diagramId)
+  const setStoreDiagramId = useDiagramStore((state) => state.setDiagramId)
 
   const viewMode = useViewModeStore((state) => state.viewMode)
   const applyPresenceMessage = usePresenceStore((state) => state.applyPresenceMessage)
@@ -115,6 +147,7 @@ function DiagramWorkspace() {
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null)
   const lastCursorSendRef = useRef(0)
   const diagramIdRef = useRef<string | null>(null)
+  const projectIdRef = useRef<string | null>(null)
 
   // "Modo herramienta" de relación (punto 6, barra superior): un clic en uno de los
   // 6 botones de tipo "arma" ese tipo para la SIGUIENTE conexión manual que el
@@ -146,9 +179,11 @@ function DiagramWorkspace() {
       try {
         // 1) Resuelve (o crea) el proyecto/diagrama activo Y su snapshot en una
         // sola llamada de red (ver diagramBootstrap.ensureActiveDiagram).
-        const { diagramId, snapshot } = await ensureActiveDiagram(token as string, userId as string, controller.signal)
+        const { diagramId, projectId, snapshot } = await ensureActiveDiagram(token as string, userId as string, controller.signal)
         if (cancelled) return
         diagramIdRef.current = diagramId
+        projectIdRef.current = projectId
+        setStoreDiagramId(diagramId)
 
         const parsed = JSON.parse(snapshot.currentState) as Partial<CanonicalModel>
         hydrate({
@@ -166,19 +201,26 @@ function DiagramWorkspace() {
         diagramStompClient.connect(diagramId, token as string, {
           onConnected: () => {
             if (cancelled) return
-            updateConnectionStatus('online')
-            connectTransport({
-              send: (operationType, targetId, payload) =>
-                diagramStompClient.sendMutation(operationType, targetId, userId as string, payload),
-              acquireLock: (targetId) => diagramStompClient.acquireLock(targetId, userId as string),
-              releaseLock: (targetId) => diagramStompClient.releaseLock(targetId, userId as string),
+            // Antes de pasar a 'online' de verdad, revisa si quedó algo encolado de
+            // una sesión offline anterior (o de una caída de STOMP en esta misma
+            // sesión, gracias al reconnectDelay del cliente) y lo sincroniza primero
+            // -- ver useOfflineSync.ts. `connectNow` es exactamente lo que este
+            // callback hacía antes de que existiera la cola offline: conectar el
+            // transport real y unirse a la sala de presencia.
+            void handleReconnect(diagramId, token as string, () => {
+              connectTransport({
+                send: (operationType, targetId, payload) =>
+                  diagramStompClient.sendMutation(operationType, targetId, userId as string, payload),
+                acquireLock: (targetId) => diagramStompClient.acquireLock(targetId, userId as string),
+                releaseLock: (targetId) => diagramStompClient.releaseLock(targetId, userId as string),
+              })
+              // Presencia (RF-04.3): alta en la sala del diagrama para que los demás
+              // colaboradores nos vean (cursor, nombre, color) y para que LOCK_ACQUIRED
+              // pueda resolver nuestro userName/color reales en vez del genérico
+              // "Usuario"/#999999 (ver RoomManager.findMember en el backend).
+              setCurrentUserId(userId as string)
+              diagramStompClient.joinPresence(diagramId, userId as string, fullName ?? 'Usuario', colorForUser(userId as string))
             })
-            // Presencia (RF-04.3): alta en la sala del diagrama para que los demás
-            // colaboradores nos vean (cursor, nombre, color) y para que LOCK_ACQUIRED
-            // pueda resolver nuestro userName/color reales en vez del genérico
-            // "Usuario"/#999999 (ver RoomManager.findMember en el backend).
-            setCurrentUserId(userId as string)
-            diagramStompClient.joinPresence(diagramId, userId as string, fullName ?? 'Usuario', colorForUser(userId as string))
           },
           onDisconnected: () => {
             if (cancelled) return
@@ -211,6 +253,8 @@ function DiagramWorkspace() {
       diagramStompClient.disconnect()
       disconnectTransport()
       diagramIdRef.current = null
+      projectIdRef.current = null
+      setStoreDiagramId(null)
     }
   }, [
     token,
@@ -224,6 +268,8 @@ function DiagramWorkspace() {
     clearLock,
     setCurrentUserId,
     hydrate,
+    setStoreDiagramId,
+    handleReconnect,
   ])
 
   function handleConnect(connection: Connection) {
@@ -276,13 +322,20 @@ function DiagramWorkspace() {
   }
 
   const statusLabel =
-    connectionStatus === 'online' ? 'Conectado' : connectionStatus === 'connecting' ? 'Conectando…' : 'Desconectado'
+    connectionStatus === 'online'
+      ? 'Conectado'
+      : connectionStatus === 'connecting'
+        ? 'Conectando…'
+        : connectionStatus === 'syncing'
+          ? 'Sincronizando…'
+          : 'Desconectado'
 
   const armedOption = RELATIONSHIP_TYPE_OPTIONS.find((o) => o.value === armedRelationshipType)
 
   return (
     <div className="diagram-app">
       <OfflineSyncBanner />
+      {reconciliationReport && <ReconciliationModal report={reconciliationReport} onClose={dismissReport} />}
       <header className="diagram-toolbar">
         <h1>Diagramador UML/ER</h1>
         <span className={`connection-badge connection-badge--${connectionStatus}`}>{statusLabel}</span>
@@ -320,10 +373,23 @@ function DiagramWorkspace() {
           </span>
         )}
 
+        <div className="diagram-toolbar__group" role="group" aria-label="Generación y exportación de artefactos">
+          <GenerateBackendButton diagramId={storeDiagramId} />
+          <GenerateMobileAppButton diagramId={storeDiagramId} />
+          <ExportXmiButton diagramId={storeDiagramId} />
+          <ImportXmiButton projectId={projectIdRef.current} />
+        </div>
+
+        <div className="diagram-toolbar__group" role="group" aria-label="Gestión de proyecto">
+          <CreateProjectModal />
+          <InviteMemberModal projectId={projectIdRef.current} />
+          <DeleteProjectButton projectId={projectIdRef.current} />
+        </div>
+
         <div className="diagram-toolbar__spacer" />
         <ViewModeToggle />
-        <VoiceToolbar />
-        <VisionModal />
+        <VoiceToolbar diagramId={storeDiagramId} />
+        <VisionModal diagramId={storeDiagramId} />
         <button type="button" className="diagram-toolbar__logout" onClick={logout}>
           Salir
         </button>

@@ -6,21 +6,22 @@ interface ClassContextMenuProps {
   y: number
   onAddAttribute: () => void
   onAddMethod: () => void
+  onDeleteClass: () => void
   onClose: () => void
 }
 
 /**
  * Menú contextual estilo Sparx Enterprise Architect (punto 2): clic derecho sobre
- * una clase abre "Agregar > Atributo" / "Agregar > Método". Solo estas dos
- * opciones -- el resto del menú de EA (Port, Reception, etc.) no aplica al modelo
- * canónico de este proyecto.
+ * una clase abre "Agregar > Atributo" / "Agregar > Método" y "Eliminar clase". El
+ * resto del menú de EA (Port, Reception, etc.) no aplica al modelo canónico de
+ * este proyecto.
  *
  * Se monta vía portal a document.body: la clase vive dentro de un nodo de React
  * Flow con su propio transform de pan/zoom, así que un menú `position:absolute`
  * anidado ahí adentro heredaría ese zoom/escala. El portal lo saca de ese árbol
  * para poder usar coordenadas de pantalla (clientX/clientY) directamente.
  */
-export function ClassContextMenu({ x, y, onAddAttribute, onAddMethod, onClose }: ClassContextMenuProps) {
+export function ClassContextMenu({ x, y, onAddAttribute, onAddMethod, onDeleteClass, onClose }: ClassContextMenuProps) {
   return createPortal(
     <>
       {/* Backdrop invisible de pantalla completa: cualquier clic (o un segundo clic
@@ -64,6 +65,17 @@ export function ClassContextMenu({ x, y, onAddAttribute, onAddMethod, onClose }:
             </button>
           </div>
         </div>
+        <button
+          type="button"
+          className="class-context-menu__item class-context-menu__item--action class-context-menu__item--danger"
+          role="menuitem"
+          onClick={() => {
+            onDeleteClass()
+            onClose()
+          }}
+        >
+          Eliminar clase
+        </button>
       </div>
     </>,
     document.body,
