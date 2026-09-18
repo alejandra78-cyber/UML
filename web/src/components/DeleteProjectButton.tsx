@@ -47,7 +47,7 @@ export function DeleteProjectButton({ projectId }: DeleteProjectButtonProps) {
     <span className="diagram-toolbar__package-btn">
       <button
         type="button"
-        className="diagram-toolbar__icon-btn"
+        className="diagram-toolbar__icon-btn diagram-toolbar__icon-btn--danger"
         title="Eliminar el proyecto activo (irreversible)"
         onClick={handleClick}
         disabled={!projectId || busy}

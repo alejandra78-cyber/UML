@@ -235,6 +235,50 @@ class XmiImporterServiceTest {
     }
 
     @Test
+    void roundTrip_dependencyAndRealization_preserveSourceAndTargetClassIds() {
+        // Cierra el ciclo completo (no solo el lado exportador) para los dos tipos
+        // que ahora usan client/supplier en vez de ownedEnd -- confirma que
+        // sourceClassId/targetClassId sobreviven el export->import, no solo el
+        // xmi:type.
+        UUID facturacionId = UUID.randomUUID();
+        UUID emailId = UUID.randomUUID();
+        UUID repositorioJpaId = UUID.randomUUID();
+        UUID repositorioId = UUID.randomUUID();
+
+        Relationship dependency = Relationship.builder()
+                .id(UUID.randomUUID())
+                .sourceClassId(facturacionId)
+                .targetClassId(emailId)
+                .type(RelationshipType.DEPENDENCY)
+                .build();
+        Relationship realization = Relationship.builder()
+                .id(UUID.randomUUID())
+                .sourceClassId(repositorioJpaId)
+                .targetClassId(repositorioId)
+                .type(RelationshipType.REALIZATION)
+                .build();
+
+        CanonicalModel model = new CanonicalModel("1.0.0", 1, List.of(),
+                List.of(minimalClass(facturacionId, "ServicioFacturacion"), minimalClass(emailId, "ServicioEmail"),
+                        minimalClass(repositorioJpaId, "RepositorioJpa"), minimalClass(repositorioId, "Repositorio")),
+                List.of(dependency, realization));
+
+        CanonicalModel imported = exportThenImport(model, "Diagrama").model();
+
+        Map<UUID, Relationship> byId = imported.relationships().stream()
+                .collect(Collectors.toMap(Relationship::id, r -> r));
+        Relationship importedDependency = byId.get(dependency.id());
+        assertThat(importedDependency.type()).isEqualTo(RelationshipType.DEPENDENCY);
+        assertThat(importedDependency.sourceClassId()).isEqualTo(facturacionId);
+        assertThat(importedDependency.targetClassId()).isEqualTo(emailId);
+
+        Relationship importedRealization = byId.get(realization.id());
+        assertThat(importedRealization.type()).isEqualTo(RelationshipType.REALIZATION);
+        assertThat(importedRealization.sourceClassId()).isEqualTo(repositorioJpaId);
+        assertThat(importedRealization.targetClassId()).isEqualTo(repositorioId);
+    }
+
+    @Test
     void roundTrip_fullDomainModel_isFullyEquivalent() {
         // Reusa un dominio con clases, atributos, métodos, herencia, asociación
         // y many-to-many -- ejercitando todos los caminos del importador a la vez.
@@ -368,6 +412,35 @@ class XmiImporterServiceTest {
 
         assertThat(model.relationships()).hasSize(1);
         assertThat(model.relationships().get(0).type()).isEqualTo(RelationshipType.GENERALIZATION);
+    }
+
+    @Test
+    void legacyXmi_generalizationAsTopLevelPackagedElementWithGeneralSpecificAttributes_stillImports() {
+        // Compatibilidad hacia atras con el formato INTERMEDIO: nuestro propio
+        // exportador, entre el fix anterior (general/specific como atributos sobre un
+        // packagedElement propio) y este (generalization anidada dentro de la clase
+        // hija), produjo archivos con esta forma exacta. Deben seguir importando bien.
+        String legacyXml = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <xmi:XMI xmi:version="2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1">
+                  <uml:Model xmi:id="model-1" name="Generico">
+                    <packagedElement xmi:type="uml:Class" xmi:id="ID_HIJO" name="Empleado"/>
+                    <packagedElement xmi:type="uml:Class" xmi:id="ID_PADRE" name="Persona"/>
+                    <packagedElement xmi:type="uml:Generalization" xmi:id="ID_GEN"
+                        relationshipType="GENERALIZATION" general="ID_PADRE" specific="ID_HIJO"/>
+                  </uml:Model>
+                </xmi:XMI>
+                """;
+
+        CanonicalModel model = importer.importXmi(legacyXml).model();
+
+        assertThat(model.relationships()).hasSize(1);
+        Relationship relationship = model.relationships().get(0);
+        assertThat(relationship.type()).isEqualTo(RelationshipType.GENERALIZATION);
+        ClassEntity empleado = findByName(model, "Empleado");
+        ClassEntity persona = findByName(model, "Persona");
+        assertThat(relationship.sourceClassId()).isEqualTo(empleado.id());
+        assertThat(relationship.targetClassId()).isEqualTo(persona.id());
     }
 
     @Test

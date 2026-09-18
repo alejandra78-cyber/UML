@@ -65,8 +65,12 @@
   border-color: #1a7f37;
 }
 
-.voice-toolbar__feedback--info {
+.voice-toolbar__feedback--partial {
   border-color: #b7791f;
+}
+
+.voice-toolbar__feedback--guardrail {
+  border-color: #6b5b95;
 }
 
 .voice-toolbar__feedback--error {

@@ -5,8 +5,13 @@ package com.modelcollab.vision.service;
  * foto de pizarra y devuelve texto (esperado: JSON segun el prompt de
  * {@code VisionOcrService}). Existe como interfaz inyectable precisamente para
  * que {@code VisionOcrService} se pueda testear con un fake/stub sin red (ver
- * {@code VisionOcrServiceTest}), dado que no hay ninguna API key de Gemini
- * configurada en este entorno de desarrollo.
+ * {@code VisionOcrServiceTest}).
+ *
+ * <p><b>Nombre historico:</b> se llama "Gemini" porque ese fue el proveedor
+ * original; el proveedor real hoy es OpenAI ({@code OpenAiVisionClientImpl}, ver
+ * su javadoc para el motivo de la migracion). No se renombro la interfaz ni
+ * {@code VisionOcrService} al migrar de proveedor a proposito: ninguno de los
+ * dos depende de cual sea el proveedor concreto, solo de este contrato.</p>
  *
  * <p><b>Nombrado deliberado ("Vision" + "Gemini", no solo "GeminiClient" o
  * "GeminiApiClient"):</b> otro agente puede estar trabajando en paralelo esta

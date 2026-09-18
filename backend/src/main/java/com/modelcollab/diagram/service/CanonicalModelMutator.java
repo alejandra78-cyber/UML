@@ -20,6 +20,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,10 +49,85 @@ import java.util.stream.Collectors;
 @Component
 public class CanonicalModelMutator {
 
+    /**
+     * Defaults del esquema canonico (seccion 7 del documento de arquitectura) para
+     * los campos <b>primitivos</b> de {@link ClassEntity}: si el payload los omite o
+     * los trae explicitamente {@code null} -- lo cual ocurre en la practica cuando el
+     * payload viene de una fuente no deterministica como Gemini (UC08/UC09 comando de
+     * voz/texto, UC10 vision de pizarra) en vez de un cliente que siempre serializa el
+     * objeto completo -- Jackson lanza {@code InvalidNullException} ("Cannot map null
+     * into type double/boolean") al intentar bindear {@code null} a un {@code double}/
+     * {@code boolean} primitivo, y la operacion entera se rechaza. Los campos de
+     * referencia (listas, enums) NO necesitan este tratamiento: {@link ClassEntity} ya
+     * normaliza {@code attributes}/{@code methods} nulos a lista vacia en su propio
+     * constructor compacto.
+     */
+    private static final Map<String, Object> CLASS_ENTITY_DEFAULTS = Map.of(
+            "width", 240.0,
+            "height", 180.0,
+            "isAbstract", false
+    );
+
+    /** Mismo criterio que {@link #CLASS_ENTITY_DEFAULTS}, para los primitivos de {@link Attribute}. */
+    private static final Map<String, Object> ATTRIBUTE_DEFAULTS = Map.of(
+            "length", 255,
+            "precision", 10,
+            "scale", 2,
+            "isPrimaryKey", false,
+            "isNullable", true,
+            "isUnique", false
+    );
+
+    /**
+     * {@code isNavigable} es primitivo (mismo riesgo que arriba). {@code owningSide}
+     * no es primitivo -- un {@code null} no rompe la deserializacion -- pero se
+     * completa igual porque el esquema le declara default {@code "SOURCE"} y dejarlo
+     * en {@code null} es una inconsistencia silenciosa que ya se compensa "a mano" en
+     * otros puntos del codigo (ver {@code GeneratorModelBuilder.addManyToMany}); mejor
+     * garantizar el default en el unico punto de entrada que en cada consumidor.
+     */
+    private static final Map<String, Object> RELATIONSHIP_DEFAULTS = Map.of(
+            "owningSide", "SOURCE",
+            "isNavigable", true
+    );
+
     private final ObjectMapper objectMapper;
 
     public CanonicalModelMutator(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    /**
+     * Devuelve una copia mutable de {@code payload} con cada clave de {@code defaults}
+     * completada si falta o si vino explicitamente {@code null} (un payload de
+     * {@code Map.copyOf(...)} -- como {@code AiOperation#payload()} o
+     * {@code StompMutationMessage#payload()} -- es inmutable, por eso la copia).
+     */
+    private static Map<String, Object> withDefaults(Map<String, Object> payload, Map<String, Object> defaults) {
+        Map<String, Object> filled = new LinkedHashMap<>(payload);
+        for (Map.Entry<String, Object> entry : defaults.entrySet()) {
+            if (filled.get(entry.getKey()) == null) {
+                filled.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return filled;
+    }
+
+    /**
+     * Convierte cada elemento de una lista cruda (tal como llega en el payload de
+     * {@code BULK_MERGE}: {@code List<Map<String,Object>>} sin tipar todavia) al tipo
+     * de destino, aplicando {@code defaults} a cada elemento individualmente antes de
+     * convertir -- mismo riesgo que {@link #withDefaults}, ya que un borrador de UC10
+     * (vision) puede traer varias clases y omitir width/height en cualquiera de ellas.
+     */
+    private <T> List<T> convertListWithDefaults(Object rawList, Map<String, Object> defaults, Class<T> targetType) {
+        List<Map<String, Object>> rawMaps = objectMapper.convertValue(rawList, new TypeReference<List<Map<String, Object>>>() {
+        });
+        List<T> result = new ArrayList<>(rawMaps.size());
+        for (Map<String, Object> rawMap : rawMaps) {
+            result.add(objectMapper.convertValue(withDefaults(rawMap, defaults), targetType));
+        }
+        return result;
     }
 
     public MutationOutcome apply(CanonicalModel model, OperationType type, UUID targetId, Map<String, Object> payload) {
@@ -87,7 +163,7 @@ public class CanonicalModelMutator {
     // ---- ADD ----
 
     private MutationOutcome addClass(CanonicalModel model, Map<String, Object> payload) {
-        ClassEntity newClass = objectMapper.convertValue(payload, ClassEntity.class);
+        ClassEntity newClass = objectMapper.convertValue(withDefaults(payload, CLASS_ENTITY_DEFAULTS), ClassEntity.class);
         if (model.findClass(newClass.id()).isPresent()) {
             return MutationOutcome.rejected("Ya existe una clase con id " + newClass.id());
         }
@@ -99,7 +175,7 @@ public class CanonicalModelMutator {
         if (found.isEmpty()) {
             return MutationOutcome.rejected("Clase no encontrada: " + classId);
         }
-        Attribute newAttribute = objectMapper.convertValue(payload, Attribute.class);
+        Attribute newAttribute = objectMapper.convertValue(withDefaults(payload, ATTRIBUTE_DEFAULTS), Attribute.class);
         ClassEntity clazz = found.get();
         if (clazz.attributes().stream().anyMatch(a -> a.id().equals(newAttribute.id()))) {
             return MutationOutcome.rejected("Ya existe un atributo con id " + newAttribute.id());
@@ -123,7 +199,7 @@ public class CanonicalModelMutator {
     }
 
     private MutationOutcome addRelationship(CanonicalModel model, Map<String, Object> payload) {
-        Relationship newRelationship = objectMapper.convertValue(payload, Relationship.class);
+        Relationship newRelationship = objectMapper.convertValue(withDefaults(payload, RELATIONSHIP_DEFAULTS), Relationship.class);
         if (findRelationship(model, newRelationship.id()).isPresent()) {
             return MutationOutcome.rejected("Ya existe una relacion con id " + newRelationship.id());
         }
@@ -338,12 +414,10 @@ public class CanonicalModelMutator {
 
     private MutationOutcome bulkMerge(CanonicalModel model, Map<String, Object> payload) {
         List<ClassEntity> newClasses = payload.containsKey("classes")
-                ? objectMapper.convertValue(payload.get("classes"), new TypeReference<List<ClassEntity>>() {
-        })
+                ? convertListWithDefaults(payload.get("classes"), CLASS_ENTITY_DEFAULTS, ClassEntity.class)
                 : List.of();
         List<Relationship> newRelationships = payload.containsKey("relationships")
-                ? objectMapper.convertValue(payload.get("relationships"), new TypeReference<List<Relationship>>() {
-        })
+                ? convertListWithDefaults(payload.get("relationships"), RELATIONSHIP_DEFAULTS, Relationship.class)
                 : List.of();
         List<Package> newPackages = payload.containsKey("packages")
                 ? objectMapper.convertValue(payload.get("packages"), new TypeReference<List<Package>>() {

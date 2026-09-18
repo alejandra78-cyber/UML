@@ -2,7 +2,10 @@
   position: absolute;
   top: 0;
   left: 0;
-  pointer-events: all;
+  /* De solo lectura ahora (la edición pasa por .uml-edge-panel al seleccionar
+     la relación) -- sin pointer-events, un clic acá atraviesa hacia el path del
+     edge por debajo y lo selecciona, en vez de quedar atrapado en este div. */
+  pointer-events: none;
   font-size: 11px;
   font-family: 'Consolas', 'Menlo', monospace;
   background: #ffffff;
@@ -10,84 +13,94 @@
   border: 1px solid #999;
   border-radius: 3px;
   padding: 1px 4px;
-  cursor: text;
   white-space: nowrap;
 }
 
 .uml-edge-label--fixed {
-  cursor: default;
   color: #555;
   border-style: dashed;
 }
 
-.uml-edge-label input {
-  width: 46px;
-  font-family: inherit;
-  font-size: inherit;
-  border: none;
-  outline: none;
-}
-
-.uml-edge-label select {
-  font-family: inherit;
-  font-size: inherit;
-  border: none;
-  outline: none;
-  background: transparent;
-  cursor: pointer;
-}
-
-.uml-edge-type-select {
+/* Panel consolidado de edición (tipo, multiplicidad+rol por extremo, owningSide,
+   navegable, borrar) -- reemplaza los antiguos elementos sueltos siempre
+   visibles (selector de tipo, botón de borrar, fila de Nav./owningSide) que se
+   pisaban entre sí. Solo se monta cuando la relación está seleccionada, ver
+   UmlRelationshipEdge.tsx. */
+.uml-edge-panel {
   position: absolute;
   top: 0;
   left: 0;
   pointer-events: all;
-  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: max-content;
+  min-width: 230px;
+  font-size: 11px;
   font-family: 'Consolas', 'Menlo', monospace;
+  /* Mismo criterio "siempre claro" que ProjectModals.css/ReconciliationModal.css
+     /VisionModal.css/ToolbarDropdown.css -- sin esto, en un SO con preferencia
+     de tema oscuro el texto hereda las variables --text/--text-h de index.css
+     (pensadas para fondo oscuro) mientras este panel queda fijo en blanco. */
+  color-scheme: light;
   background-color: #ffffff;
   color: #1a1a1a;
   border: 1px solid #999;
-  border-radius: 3px;
-  padding: 2px 16px 2px 5px;
-  cursor: pointer;
-  max-width: 130px;
-  /* appearance:none + flecha propia en vez del combo nativo del SO: sin esto, en
-     algunos navegadores/temas el <select> se renderiza con el chrome nativo del
-     sistema (que puede ignorar buena parte del borde/fondo declarados acá),
-     dando la impresión de un rectángulo plano "sin estilo". */
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='6'%3E%3Cpath d='M0 0 L8 0 L4 6 Z' fill='%23555'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 5px center;
+  border-radius: 4px;
+  padding: 6px 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 }
 
-.uml-edge-type-select:hover {
-  border-color: #666;
+.uml-edge-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
-.uml-edge-type-select:focus-visible {
-  outline: 2px solid #4a90d9;
-  outline-offset: 1px;
-}
-
-.uml-edge-type-select option {
-  background: #ffffff;
+.uml-edge-panel select,
+.uml-edge-panel input[type='text'] {
+  font-family: inherit;
+  font-size: inherit;
   color: #1a1a1a;
+  background: #ffffff;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 2px 4px;
 }
 
-.uml-edge-delete {
-  position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: all;
-  width: 16px;
-  height: 16px;
-  line-height: 14px;
+.uml-edge-panel__type-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.uml-edge-panel__tag {
+  flex: 0 0 auto;
+  width: 42px;
+  color: #666;
+}
+
+.uml-edge-panel__role-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.uml-edge-panel__navigable {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.uml-edge-panel__delete {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
   padding: 0;
   font-size: 12px;
-  font-family: 'Consolas', 'Menlo', monospace;
   background: #ffffff;
   color: #c0392b;
   border: 1px solid #c0392b;
@@ -95,7 +108,7 @@
   cursor: pointer;
 }
 
-.uml-edge-delete:hover {
+.uml-edge-panel__delete:hover {
   background: #fdecea;
 }
 

@@ -10,11 +10,11 @@ interface ReconciliationModalProps {
 // PKG-04 Resiliencia Offline -- implementa UC12 (Sincronizar Cambios al Reconectar).
 /**
  * Reporte de sincronización que se muestra al reconectar con cambios que
- * quedaron encolados offline (ver features/offline/useOfflineSync.ts). Hoy
- * `syncOfflineQueue` (offline/syncOffline.ts) es un MOCK que asume que todo se
- * aplicó sin conflicto -- este modal ya está preparado para mostrar
- * `discardedDetails` el día que el endpoint real del backend (UC12, en curso)
- * compute descartes por rebase de verdad.
+ * quedaron encolados offline (ver features/offline/useOfflineSync.ts).
+ * `syncOfflineQueue` (offline/syncOffline.ts) llama de verdad a
+ * POST /api/v1/diagrams/{id}/sync-offline (UC12, backend cerrado y verificado);
+ * `discardedDetails` refleja los descartes reales que compute el rebase del
+ * backend, no un mock.
  *
  * Portal a document.body + overlay, mismo patrón que ClassContextMenu.tsx.
  */

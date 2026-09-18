@@ -111,8 +111,12 @@
 
 /* Punto 2: cluster de iconos compactos por fila (mover arriba/abajo/eliminar),
    visibles solo en hover -- `position:absolute` + `opacity` (nunca `display`),
-   así nunca cambia la altura de la fila/clase al aparecer (ver la nota extensa
-   de .uml-class-node__add sobre por qué eso rompía el arrastre de relaciones). */
+   así nunca cambia la altura de la fila/clase al aparecer. El motivo real: un
+   `display`/`visibility` que cambia la altura de la clase mientras el usuario
+   arrastra una conexión desde un handle descendiente rompe el drag a mitad de
+   camino (reactflow recalcula dimensiones vía ResizeObserver) -- confirmado con
+   Playwright en el extinto botón "+ atributo" (eliminado por decisión de
+   producto, ver UmlClassNode.tsx). `opacity` nunca mueve nada del layout. */
 .uml-class-node__row-actions {
   position: absolute;
   top: 0;
@@ -158,37 +162,13 @@
   background: #fde3e3;
 }
 
-.uml-class-node__add {
-  margin-top: 2px;
-  width: 100%;
-  font-size: 11px;
-  background: transparent;
-  border: 1px dashed #999;
-  border-radius: 3px;
-  color: #555;
-  cursor: pointer;
-  padding: 2px 4px;
-  /* Punto 2: sin placeholder permanente -- la fila "+ atributo"/"+ método" solo
-     aparece con la clase en hover o seleccionada (ver .uml-class-node--selected),
-     nunca como estado por defecto. Un compartimento vacío se ve en blanco.
-     `visibility: hidden` (NO `display: none`): un handle de conexión es
-     descendiente de .uml-class-node, así que pasar el mouse sobre él YA activa
-     :hover en toda la clase -- si el botón entra/sale del flujo con display,
-     cambia la ALTURA del nodo justo en pleno arrastre de una relación (React
-     Flow recalcula dimensiones vía ResizeObserver y el arrastre de conexión se
-     rompe a mitad de camino: confirmado con Playwright, onConnect dejaba de
-     dispararse). visibility:hidden reserva el espacio siempre y nunca mueve nada. */
-  visibility: hidden;
-}
-
-.uml-class-node:hover .uml-class-node__add,
-.uml-class-node--selected .uml-class-node__add {
-  visibility: visible;
-}
-
-.uml-class-node__add:hover {
-  background: #f0f0f0;
-}
+/* Cambio de decisión: se eliminó por completo la fila "+ atributo"/"+ método"
+   (antes visible en hover/selección vía visibility:hidden -> visible, siempre
+   montada en el DOM -- ver historial de este archivo si hace falta el detalle
+   de por qué era visibility y no display). La única vía para agregar un
+   atributo/método es ahora el menú contextual (clic derecho -> Agregar), ver
+   ClassContextMenu.tsx. El compartimento correspondiente (.uml-class-node__section)
+   ahora ni siquiera se monta si está vacío -- ver UmlClassNode.tsx. */
 
 /* --- Sintaxis de atributo "visibilidad nombre : tipo" y badges (punto 1) --- */
 .uml-class-node__attr-line {

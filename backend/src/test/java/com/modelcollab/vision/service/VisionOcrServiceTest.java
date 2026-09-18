@@ -20,10 +20,10 @@ import static org.mockito.Mockito.when;
 
 /**
  * Cubre UC10 (Importar Diagrama desde Foto de Pizarra) con
- * {@link VisionGeminiClient} mockeado -- SIN red, ya que no hay ninguna API
- * key de Gemini configurada en este entorno (ver el javadoc de
- * {@link VisionGeminiClientImpl}). El texto JSON fijo usado abajo simula la
- * forma real que le pedimos a Gemini en el prompt de {@link VisionOcrService}.
+ * {@link VisionGeminiClient} mockeado -- SIN red, sin necesidad de ninguna API
+ * key real (ver el javadoc de {@code OpenAiVisionClientImpl}, la implementacion
+ * real de este puerto). El texto JSON fijo usado abajo simula la forma real que
+ * le pedimos al proveedor de IA en el prompt de {@link VisionOcrService}.
  */
 class VisionOcrServiceTest {
 
@@ -151,6 +151,121 @@ class VisionOcrServiceTest {
 
         assertThat(draft.relationships()).isEmpty();
         assertThat(draft.warnings()).hasSize(1);
+    }
+
+    @Test
+    void analyzeSketch_attributeWithExplicitNullOrOmittedPrimaryKey_isTreatedAsFalse() {
+        // Bug real encontrado con Gemini real (no stub): antes de este fix,
+        // GeminiDraftAttribute.primaryKey era un boolean primitivo poblado directo
+        // del JSON de Gemini via objectMapper.readValue -- un "primaryKey": null
+        // explicito (o el campo directamente ausente) hacia fallar la deserializacion
+        // completa de GeminiSketchDraft con InvalidNullException, antes de llegar
+        // siquiera a Attribute.builder().
+        String geminiJson = """
+                {
+                  "classes": [
+                    {
+                      "name": "Factura",
+                      "existingClassId": null,
+                      "attributes": [
+                        { "name": "total", "type": "DECIMAL", "primaryKey": null },
+                        { "name": "descripcion", "type": "VARCHAR" }
+                      ]
+                    }
+                  ],
+                  "relationships": []
+                }
+                """;
+        when(geminiClient.generateContent(any(byte[].class), anyString(), anyString())).thenReturn(geminiJson);
+
+        DraftModelResponse draft = service.analyzeSketch(UUID.randomUUID(),
+                new VisionImportRequest(new byte[]{1}, "image/jpeg", CanonicalModel.empty()));
+
+        assertThat(draft.classes()).hasSize(1);
+        ClassEntity factura = draft.classes().get(0);
+        assertThat(factura.attributes()).hasSize(2);
+        assertThat(factura.attributes()).allSatisfy(a -> assertThat(a.isPrimaryKey()).isFalse());
+    }
+
+    @Test
+    void analyzeSketch_detectsMethodsWithParameters_compositePatternRealCase() {
+        // Reproduce el bug real reportado: una foto real del patron Composite
+        // (Component: operation/add/remove/getChild, Leaf: operation,
+        // Composite: operation/add/remove/getChild) llegaba con las clases
+        // creadas pero sin ningun metodo, porque ni el prompt le pedia
+        // "methods" a Gemini ni GeminiDraftClass tenia ese campo -- no era un
+        // problema de mapeo, era que el dato nunca se pedia ni se transportaba.
+        String geminiJson = """
+                {
+                  "classes": [
+                    {
+                      "name": "Component",
+                      "existingClassId": null,
+                      "attributes": [],
+                      "methods": [
+                        { "name": "operation", "returnType": "void", "parameters": [] },
+                        { "name": "add", "returnType": "void", "parameters": [
+                          { "name": "component", "type": "Component" } ] },
+                        { "name": "remove", "returnType": "void", "parameters": [
+                          { "name": "component", "type": "Component" } ] },
+                        { "name": "getChild", "returnType": "Component", "parameters": [
+                          { "name": "index", "type": "int" } ] }
+                      ]
+                    },
+                    {
+                      "name": "Leaf",
+                      "existingClassId": null,
+                      "attributes": [],
+                      "methods": [
+                        { "name": "operation", "returnType": "void", "parameters": [] }
+                      ]
+                    }
+                  ],
+                  "relationships": []
+                }
+                """;
+        when(geminiClient.generateContent(any(byte[].class), anyString(), anyString())).thenReturn(geminiJson);
+
+        DraftModelResponse draft = service.analyzeSketch(UUID.randomUUID(),
+                new VisionImportRequest(new byte[]{1}, "image/jpeg", CanonicalModel.empty()));
+
+        ClassEntity component = draft.classes().stream().filter(c -> c.name().equals("Component")).findFirst().orElseThrow();
+        ClassEntity leaf = draft.classes().stream().filter(c -> c.name().equals("Leaf")).findFirst().orElseThrow();
+
+        assertThat(component.methods()).extracting(m -> m.name())
+                .containsExactlyInAnyOrder("operation", "add", "remove", "getChild");
+        assertThat(leaf.methods()).extracting(m -> m.name()).containsExactly("operation");
+
+        var addMethod = component.methods().stream().filter(m -> m.name().equals("add")).findFirst().orElseThrow();
+        assertThat(addMethod.parameters()).hasSize(1);
+        assertThat(addMethod.parameters().get(0).name()).isEqualTo("component");
+        assertThat(addMethod.parameters().get(0).type()).isEqualTo("Component");
+
+        var getChild = component.methods().stream().filter(m -> m.name().equals("getChild")).findFirst().orElseThrow();
+        assertThat(getChild.returnType()).isEqualTo("Component");
+    }
+
+    @Test
+    void analyzeSketch_classWithoutMethodsKeyAtAll_doesNotFail() {
+        // El prompt le pide a Gemini que siempre incluya "methods": [] aunque este
+        // vacio, pero si de todas formas omite la clave (el modelo no siempre obedece
+        // el formato al pie de la letra), no debe romper -- mismo criterio que ya
+        // existia para "attributes" ausente.
+        String geminiJson = """
+                {
+                  "classes": [
+                    { "name": "SinMetodos", "existingClassId": null, "attributes": [] }
+                  ],
+                  "relationships": []
+                }
+                """;
+        when(geminiClient.generateContent(any(byte[].class), anyString(), anyString())).thenReturn(geminiJson);
+
+        DraftModelResponse draft = service.analyzeSketch(UUID.randomUUID(),
+                new VisionImportRequest(new byte[]{1}, "image/jpeg", CanonicalModel.empty()));
+
+        assertThat(draft.classes()).hasSize(1);
+        assertThat(draft.classes().get(0).methods()).isEmpty();
     }
 
     @Test

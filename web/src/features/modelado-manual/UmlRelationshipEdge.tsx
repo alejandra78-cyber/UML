@@ -1,7 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, useReactFlow, type EdgeProps } from 'reactflow'
 import { useDiagramStore } from '../../store/useDiagramStore'
-import { MULTIPLICITY_VALUES, type Multiplicity, type Relationship, type RelationshipType, type Waypoint } from '../../types/diagram'
+import { getRectIntersection, getRectSide, rectCenter, useNodeRect } from '../../utils/edgeGeometry'
+import {
+  MULTIPLICITY_VALUES,
+  type Multiplicity,
+  type OwningSide,
+  type Relationship,
+  type RelationshipType,
+  type Waypoint,
+} from '../../types/diagram'
 import './UmlRelationshipEdge.css'
 
 // PKG-02 Modelado Manual — implementa UC06 (Crear/Editar Relación)
@@ -66,6 +74,8 @@ function wholeEnd(relationship: Relationship): EditableEnd {
 
 export function UmlRelationshipEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -81,72 +91,141 @@ export function UmlRelationshipEdge({
   const updateWaypoints = useDiagramStore((state) => state.updateWaypoints)
   const { screenToFlowPosition } = useReactFlow()
 
-  const [editingEnd, setEditingEnd] = useState<EditableEnd | null>(null)
+  // Bug reportado con captura real: el punto de conexión quedaba FIJO en el
+  // handle que originó el arrastre (siempre target=Left/source=Right, ver
+  // UmlClassNode.tsx) sin importar hacia qué lado se moviera el waypoint o
+  // dónde quedara el otro extremo -- la línea podía entrar cruzando por encima
+  // del contenido de la clase en vez de por el borde más cercano. Patrón
+  // estándar de reactflow ("Floating Edges"): se ignoran sourceX/Y/targetX/Y de
+  // los props (esos SÍ dependen del handle fijo) y se recalcula el punto real
+  // de intersección con el rectángulo de cada nodo en cada render, apuntando
+  // hacia el waypoint (o hacia el centro del otro nodo si todavía no hay uno).
+  const sourceRect = useNodeRect(source)
+  const targetRect = useNodeRect(target)
+
+  // Cierre de UC06 (corrección de UX): antes había VARIOS elementos flotando
+  // siempre visibles de forma independiente (selector de tipo, botón de borrar,
+  // fila de Nav./owningSide) que se pisaban entre sí y con los labels de
+  // multiplicidad -- cada intento de "correrlos un poco" resolvía un choque y
+  // creaba otro. Se reemplaza todo por UN solo panel consolidado que aparece
+  // únicamente cuando la relación está seleccionada (React Flow ya selecciona al
+  // hacer clic sobre la línea, sin código adicional acá), agrupando tipo,
+  // multiplicidad+rol de ambos extremos, owningSide e isNavigable. En reposo
+  // (no seleccionada) no flota NADA sobre el canvas salvo los labels de
+  // multiplicidad de solo lectura -- nada con lo que pisarse.
+  const [sourceRoleDraft, setSourceRoleDraft] = useState('')
+  const [targetRoleDraft, setTargetRoleDraft] = useState('')
+
+  useEffect(() => {
+    if (selected) {
+      setSourceRoleDraft(relationship.sourceRole ?? '')
+      setTargetRoleDraft(relationship.targetRole ?? '')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo resetear el
+    // draft en la transición no-seleccionada -> seleccionada, no en cada cambio
+    // de relationship (evitaría pisar lo que el usuario esté tipeando si llega
+    // un broadcast externo mientras el panel está abierto).
+  }, [selected])
 
   // Waypoint arrastrable (sección 8.1: "waypoints interactivos"). Solo se soporta uno
   // por ahora -- suficiente para reacomodar dónde dobla la línea y dónde queda el label
   // de cardinalidad. Mientras el usuario lo arrastra, dragPosition sobreescribe
   // localmente la posición para que se sienta fluido sin esperar el viaje por STOMP.
   const savedWaypoint: Waypoint | undefined = relationship.waypoints?.[0]
-  const defaultMidpoint: Waypoint = { x: (sourceX + targetX) / 2, y: (sourceY + targetY) / 2 }
   const [dragPosition, setDragPosition] = useState<Waypoint | null>(null)
-  const waypoint = dragPosition ?? savedWaypoint ?? defaultMidpoint
+  const activeWaypoint = dragPosition ?? savedWaypoint ?? null
 
-  const path = savedWaypoint || dragPosition
-    ? `M ${sourceX},${sourceY} L ${waypoint.x},${waypoint.y} L ${targetX},${targetY}`
-    : getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })[0]
+  // Rectángulos en vivo de ambas clases (null en el primer render, antes de que
+  // reactflow mida el nodo -- ver useNodeRect). Con ambos disponibles, cada
+  // extremo apunta hacia el waypoint si existe uno, o si no hacia el centro del
+  // OTRO nodo -- así, sin waypoint, el punto de conexión ya elige el lado más
+  // cercano entre las dos clases en vez de un Left/Right fijo.
+  const floatingSourcePoint =
+    sourceRect && targetRect
+      ? getRectIntersection(sourceRect, activeWaypoint ?? rectCenter(targetRect))
+      : null
+  const floatingTargetPoint =
+    sourceRect && targetRect
+      ? getRectIntersection(targetRect, activeWaypoint ?? rectCenter(sourceRect))
+      : null
+
+  // Fallback a los props de reactflow (posición del handle fijo) mientras el
+  // nodo todavía no fue medido -- transitorio, dura un render.
+  const resolvedSourceX = floatingSourcePoint?.x ?? sourceX
+  const resolvedSourceY = floatingSourcePoint?.y ?? sourceY
+  const resolvedTargetX = floatingTargetPoint?.x ?? targetX
+  const resolvedTargetY = floatingTargetPoint?.y ?? targetY
+  const resolvedSourcePosition =
+    floatingSourcePoint && sourceRect ? getRectSide(sourceRect, floatingSourcePoint) : sourcePosition
+  const resolvedTargetPosition =
+    floatingTargetPoint && targetRect ? getRectSide(targetRect, floatingTargetPoint) : targetPosition
+
+  const defaultMidpoint: Waypoint = {
+    x: (resolvedSourceX + resolvedTargetX) / 2,
+    y: (resolvedSourceY + resolvedTargetY) / 2,
+  }
+  const waypoint = activeWaypoint ?? defaultMidpoint
+
+  const path = activeWaypoint
+    ? `M ${resolvedSourceX},${resolvedSourceY} L ${waypoint.x},${waypoint.y} L ${resolvedTargetX},${resolvedTargetY}`
+    : getSmoothStepPath({
+        sourceX: resolvedSourceX,
+        sourceY: resolvedSourceY,
+        sourcePosition: resolvedSourcePosition,
+        targetX: resolvedTargetX,
+        targetY: resolvedTargetY,
+        targetPosition: resolvedTargetPosition,
+      })[0]
 
   // Etiquetas ubicadas al 20% y al 80% del segmento recto entre los dos extremos
   // (una aproximación simple y suficiente para el trazo ortogonal de smoothstep).
-  const sourceLabelPos = { x: sourceX + (targetX - sourceX) * 0.2, y: sourceY + (targetY - sourceY) * 0.2 }
-  const targetLabelPos = { x: sourceX + (targetX - sourceX) * 0.8, y: sourceY + (targetY - sourceY) * 0.8 }
-  // Anclado al mismo punto que el manejador de waypoint (el bend real de la línea,
-  // o el punto medio por defecto si no se arrastró ninguno) -- no a un punto medio
-  // independiente, para que nunca "flote" desviado de la línea visible.
-  const typeSelectorPos = { x: waypoint.x, y: waypoint.y - 22 }
-
-  function commitMultiplicity(end: EditableEnd, value: Multiplicity) {
-    updateRelationship(relationship.id, end === 'source' ? { sourceMultiplicity: value } : { targetMultiplicity: value })
-    setEditingEnd(null)
+  const sourceLabelPos = {
+    x: resolvedSourceX + (resolvedTargetX - resolvedSourceX) * 0.2,
+    y: resolvedSourceY + (resolvedTargetY - resolvedSourceY) * 0.2,
+  }
+  const targetLabelPos = {
+    x: resolvedSourceX + (resolvedTargetX - resolvedSourceX) * 0.8,
+    y: resolvedSourceY + (resolvedTargetY - resolvedSourceY) * 0.8,
   }
 
+  function commitSourceRole() {
+    const trimmed = sourceRoleDraft.trim()
+    if (trimmed !== (relationship.sourceRole ?? '')) {
+      updateRelationship(relationship.id, { sourceRole: trimmed })
+    }
+  }
+
+  function commitTargetRole() {
+    const trimmed = targetRoleDraft.trim()
+    if (trimmed !== (relationship.targetRole ?? '')) {
+      updateRelationship(relationship.id, { targetRole: trimmed })
+    }
+  }
+
+  /** Label de solo lectura (valor actual) -- la edición pasa por el panel consolidado
+   * cuando la relación está seleccionada, no por interacción directa acá. Sin
+   * pointer-events para que un clic sobre el label seleccione la relación (el clic
+   * "atraviesa" hacia el path del edge) en vez de quedar atrapado en este div. */
   function renderLabel(end: EditableEnd, pos: { x: number; y: number }) {
     const value = end === 'source' ? relationship.sourceMultiplicity : relationship.targetMultiplicity
-    const isEditing = editingEnd === end
+    const role = end === 'source' ? relationship.sourceRole : relationship.targetRole
     return (
-      <div
-        className="uml-edge-label nodrag nopan"
-        style={{ transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}
-        onDoubleClick={() => setEditingEnd(end)}
-      >
-        {isEditing ? (
-          <select
-            autoFocus
-            className="nodrag"
-            value={value ?? '0..1'}
-            onChange={(e) => commitMultiplicity(end, e.target.value as Multiplicity)}
-            onBlur={() => setEditingEnd(null)}
-          >
-            {MULTIPLICITY_VALUES.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <span>{value ?? '?'}</span>
-        )}
+      <div className="uml-edge-label" style={{ transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}>
+        <span>
+          {value ?? '?'}
+          {role ? ` (${role})` : ''}
+        </span>
       </div>
     )
   }
 
   /** Muchos-a-muchos se renderiza en vista UML como una asociación con multiplicidad
    * fija "0..*" en ambos extremos (no editable): es notación derivada del tipo, no
-   * un valor libre a elegir, así que no abre el editor de doble clic. */
+   * un valor libre a elegir. */
   function renderFixedManyToManyLabel(pos: { x: number; y: number }) {
     return (
       <div
-        className="uml-edge-label uml-edge-label--fixed nodrag nopan"
+        className="uml-edge-label uml-edge-label--fixed"
         style={{ transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}
         title="Muchos a muchos: multiplicidad fija 0..* en ambos extremos"
       >
@@ -179,6 +258,10 @@ export function UmlRelationshipEdge({
   const type = relationship.type
   const dashed = DASHED_TYPES.has(type)
   const showMultiplicity = !TYPES_WITHOUT_MULTIPLICITY.has(type)
+  // El panel consolidado edita multiplicidad+rol por extremo solo para los tipos
+  // que realmente los tienen editables (ver TYPES_WITHOUT_MULTIPLICITY) y que no
+  // sean Muchos-a-muchos (fijo en 0..* por definición, ver renderFixedManyToManyLabel).
+  const showEndEditors = showMultiplicity && type !== 'MANY_TO_MANY'
 
   // IDs de marker únicos POR EDGE (no por tipo): un <marker> con id duplicado entre
   // múltiples instancias de este componente es inválido en SVG (aunque los
@@ -196,13 +279,20 @@ export function UmlRelationshipEdge({
   // el extremo "todo" (wholeEnd); la flecha de Generalización/Realización va
   // siempre en el extremo "padre"/"interfaz" (target, por convención: se dibuja
   // desde la subclase/implementación HACIA el padre/interfaz); Dependencia lleva
-  // flecha abierta en target. Asociación NO lleva flecha en ningún extremo: el
-  // esquema canónico solo tiene `isNavigable` como campo GLOBAL (no navegabilidad
-  // separada por extremo), así que no hay forma consistente de representar
-  // asimetría -- se dibuja como línea sólida sin decoración en ambos extremos,
-  // igual de no dirigida/bidireccional que una asociación real. `isNavigable` no
-  // se lee acá a propósito (antes SÍ condicionaba la flecha, y por default venía
-  // en true -- por eso la flecha aparecía siempre en la práctica).
+  // flecha abierta en target.
+  //
+  // Asociación: CORRECCIÓN DE NOTACIÓN (antes NUNCA llevaba flecha, ni
+  // consultaba isNavigable a propósito -- ver historial). Según UML 2.5.1, la
+  // navegabilidad se representa con una flecha abierta simple en el extremo
+  // navegable (el mismo símbolo que ya usa Dependencia, arrowOpenId), o sin
+  // ningún símbolo si no está definida. El esquema canónico solo tiene
+  // `isNavigable` como campo GLOBAL de la relación (no hay navegabilidad
+  // separada por extremo), así que no hay forma de saber "cuál" extremo es
+  // navegable de forma independiente -- se resuelve con la misma convención que
+  // ya usan Generalización/Dependencia: el extremo `target` (el que se dibujó
+  // como destino del arrastre de conexión). Esto reemplaza el checkbox "Nav."
+  // que antes flotaba siempre visible sobre el canvas (además de ser una
+  // notación no estándar, era la pieza que más chocaba visualmente con el resto).
   const strokeColor = selected ? UML_EDGE_COLOR_SELECTED : UML_EDGE_COLOR
 
   let markerStart: string | undefined
@@ -215,6 +305,8 @@ export function UmlRelationshipEdge({
   } else if (type === 'GENERALIZATION' || type === 'REALIZATION') {
     markerEnd = `url(#${triangleEmptyId})`
   } else if (type === 'DEPENDENCY') {
+    markerEnd = `url(#${arrowOpenId})`
+  } else if (type === 'ASSOCIATION' && relationship.isNavigable) {
     markerEnd = `url(#${arrowOpenId})`
   }
 
@@ -279,28 +371,128 @@ export function UmlRelationshipEdge({
             {showMultiplicity && renderLabel('target', targetLabelPos)}
           </>
         )}
-        <select
-          className="uml-edge-type-select nodrag nopan"
-          title="Tipo de relación (UML 2.5.1)"
-          style={{ transform: `translate(-50%, -50%) translate(${typeSelectorPos.x}px, ${typeSelectorPos.y}px)` }}
-          value={type}
-          onChange={(e) => updateRelationship(relationship.id, { type: e.target.value as RelationshipType })}
-        >
-          {RELATIONSHIP_TYPE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="uml-edge-delete nodrag nopan"
-          title="Eliminar relación"
-          style={{ transform: `translate(-50%, -50%) translate(${typeSelectorPos.x + 34}px, ${typeSelectorPos.y}px)` }}
-          onClick={() => deleteRelationshipAction(relationship.id)}
-        >
-          ×
-        </button>
+
+        {selected && (
+          <div
+            className="uml-edge-panel nodrag nopan"
+            role="dialog"
+            aria-label="Editar relación"
+            // Ancla el borde INFERIOR del panel un poco arriba de la línea (en vez de
+            // centrarlo con -50%,-50%) y lo deja crecer hacia arriba: así, sin
+            // importar cuánto contenido tenga (tipo + hasta 2 extremos + owningSide +
+            // navegable), nunca se acerca más a la línea de lo que este offset fijo
+            // permite -- la separación no depende de la altura real del panel.
+            style={{ transform: `translate(-50%, -100%) translate(${waypoint.x}px, ${waypoint.y - 14}px)` }}
+          >
+            <div className="uml-edge-panel__row">
+              <select
+                className="nodrag uml-edge-panel__type-select"
+                title="Tipo de relación (UML 2.5.1)"
+                value={type}
+                onChange={(e) => updateRelationship(relationship.id, { type: e.target.value as RelationshipType })}
+              >
+                {RELATIONSHIP_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="uml-edge-panel__delete nodrag"
+                title="Eliminar relación"
+                onClick={() => deleteRelationshipAction(relationship.id)}
+              >
+                ×
+              </button>
+            </div>
+
+            {showEndEditors && (
+              <>
+                <div className="uml-edge-panel__row">
+                  <span className="uml-edge-panel__tag">Origen</span>
+                  <select
+                    className="nodrag"
+                    value={relationship.sourceMultiplicity ?? '0..1'}
+                    onChange={(e) =>
+                      updateRelationship(relationship.id, { sourceMultiplicity: e.target.value as Multiplicity })
+                    }
+                  >
+                    {MULTIPLICITY_VALUES.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    className="nodrag uml-edge-panel__role-input"
+                    placeholder="rol"
+                    title="Rol del extremo origen (opcional)"
+                    value={sourceRoleDraft}
+                    onChange={(e) => setSourceRoleDraft(e.target.value)}
+                    onBlur={commitSourceRole}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitSourceRole()
+                    }}
+                  />
+                </div>
+                <div className="uml-edge-panel__row">
+                  <span className="uml-edge-panel__tag">Destino</span>
+                  <select
+                    className="nodrag"
+                    value={relationship.targetMultiplicity ?? '0..1'}
+                    onChange={(e) =>
+                      updateRelationship(relationship.id, { targetMultiplicity: e.target.value as Multiplicity })
+                    }
+                  >
+                    {MULTIPLICITY_VALUES.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    className="nodrag uml-edge-panel__role-input"
+                    placeholder="rol"
+                    title="Rol del extremo destino (opcional)"
+                    value={targetRoleDraft}
+                    onChange={(e) => setTargetRoleDraft(e.target.value)}
+                    onBlur={commitTargetRole}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitTargetRole()
+                    }}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="uml-edge-panel__row">
+              <select
+                className="nodrag"
+                title="Lado propietario (owningSide) -- obligatorio para Muchos a muchos"
+                value={relationship.owningSide ?? 'SOURCE'}
+                onChange={(e) => updateRelationship(relationship.id, { owningSide: e.target.value as OwningSide })}
+              >
+                <option value="SOURCE">Dueño: origen</option>
+                <option value="TARGET">Dueño: destino</option>
+              </select>
+              <label
+                className="uml-edge-panel__navigable"
+                title="Navegable -- en reposo se representa con una flecha abierta en el extremo navegable (UML 2.5.1), no con este checkbox"
+              >
+                <input
+                  type="checkbox"
+                  checked={relationship.isNavigable ?? true}
+                  onChange={(e) => updateRelationship(relationship.id, { isNavigable: e.target.checked })}
+                />
+                Navegable
+              </label>
+            </div>
+          </div>
+        )}
+
         <div
           className="uml-edge-waypoint nodrag nopan"
           title="Arrastrar para doblar la línea"

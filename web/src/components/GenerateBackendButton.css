@@ -54,3 +54,19 @@
   background: transparent;
   cursor: pointer;
 }
+
+.import-xmi-btn__name-input {
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  /* Mismo criterio "siempre claro" que ProjectModals.css/ToolbarDropdown.css --
+     sin color/background explícitos, este input hereda las variables de tema
+     de index.css (piensadas para el fondo oscuro del lienzo) mientras vive
+     dentro de un panel de fondo fijo blanco (ToolbarDropdown). */
+  color-scheme: light;
+  background: #fff;
+  color: #1a1a1a;
+  width: 150px;
+  margin-right: 4px;
+}

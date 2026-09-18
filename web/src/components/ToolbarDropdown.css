@@ -1,0 +1,47 @@
+.toolbar-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.toolbar-dropdown__caret {
+  font-size: 9px;
+  margin-left: 2px;
+}
+
+.toolbar-dropdown__panel {
+  /* Panel siempre claro, y con `color` fijo -- SIN esto, "Nuevo proyecto" e
+     "Invitar" heredaban --text de index.css (que cambia con
+     prefers-color-scheme del SO) sobre este fondo blanco fijo, y en un SO con
+     modo oscuro quedaba casi invisible (contraste bajísimo); "Eliminar
+     proyecto" se salvaba solo de casualidad porque ya tenía un color propio
+     explícito (--danger). Mismo bug real que ya se corrigió en
+     ProjectModals.css/ReconciliationModal.css/VisionModal.css -- acá afectaba
+     texto de botón en vez de fondo de input, pero la causa es la misma. */
+  color-scheme: light;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 210px;
+  background: #fff;
+  color: #1a1a1a;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 8px;
+}
+
+/* Los componentes agrupados acá (GenerateBackendButton, VisionModal, etc.)
+   traen cada uno su propia clase de estilo (color, borde) -- estas reglas solo
+   los apilan en columna a todo el ancho del panel, sin pisar el resto. */
+.toolbar-dropdown__panel > * {
+  width: 100%;
+}
+
+.toolbar-dropdown__panel button {
+  width: 100%;
+  justify-content: flex-start;
+}

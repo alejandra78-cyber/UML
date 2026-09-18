@@ -190,14 +190,14 @@ export function UmlClassNode({ data, selected }: NodeProps<UmlClassNodeData>) {
     setEditingAttrId(null)
   }
 
-  // Camino único para "agregar atributo": lo usan tanto la fila rápida "+ atributo"
-  // (hover/selección) como "Agregar > Atributo" del menú contextual (punto 2) --
-  // ambos llaman a esta misma función, que a su vez llama a la misma acción del
-  // store (addAttribute, que ya arma los defaults del esquema canónico y
-  // finalmente termina en el mismo ADD_ATTRIBUTE de siempre). La diferencia con el
-  // comportamiento anterior es que ahora entra directo en modo edición inline
-  // sobre la fila nueva, con foco automático y el texto preseleccionado (ver el
-  // input del nombre, más abajo).
+  // Única vía para agregar un atributo: "Agregar > Atributo" del menú contextual
+  // (clic derecho, punto 2). Antes también existía una fila "+ atributo" que
+  // aparecía en hover/selección (visibility:hidden por CSS, siempre montada en
+  // el DOM) -- se eliminó a propósito, ver ClassContextMenu.tsx y
+  // UmlClassNode.css. Esta función sigue llamando a la misma acción del store
+  // (addAttribute, que arma los defaults del esquema canónico y termina en el
+  // mismo ADD_ATTRIBUTE de siempre) y entra directo en modo edición inline sobre
+  // la fila nueva, con foco automático y el texto preseleccionado.
   function addAttribute() {
     const newId = addAttributeAction(classEntity.id)
     setEditingAttrId(newId)
@@ -241,7 +241,7 @@ export function UmlClassNode({ data, selected }: NodeProps<UmlClassNodeData>) {
     setEditingMethodId(null)
   }
 
-  // Mismo camino único que addAttribute, para métodos.
+  // Misma única vía (menú contextual) que addAttribute, para métodos.
   function addMethod() {
     const newId = addMethodAction(classEntity.id)
     setEditingMethodId(newId)
@@ -319,6 +319,7 @@ export function UmlClassNode({ data, selected }: NodeProps<UmlClassNodeData>) {
         )}
       </div>
 
+      {classEntity.attributes.length > 0 && (
       <div className="uml-class-node__section">
         {classEntity.attributes.map((attribute, index) => (
           <div
@@ -427,11 +428,10 @@ export function UmlClassNode({ data, selected }: NodeProps<UmlClassNodeData>) {
             )}
           </div>
         ))}
-        <button type="button" className="uml-class-node__add nodrag" onClick={addAttribute}>
-          + atributo
-        </button>
       </div>
+      )}
 
+      {classEntity.methods.length > 0 && (
       <div className="uml-class-node__section">
         {classEntity.methods.map((method, index) => (
           <div
@@ -510,10 +510,8 @@ export function UmlClassNode({ data, selected }: NodeProps<UmlClassNodeData>) {
             )}
           </div>
         ))}
-        <button type="button" className="uml-class-node__add nodrag" onClick={addMethod}>
-          + método
-        </button>
       </div>
+      )}
       </div>
     </div>
   )

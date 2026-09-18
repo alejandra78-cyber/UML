@@ -182,7 +182,7 @@ Para responder con contundencia técnica al principio de **"cómo hacer que la v
 
 ### RF-03: Modelado por Visión Multimodal (Fotos de Pizarra y Papel)
 - **RF-03.1:** Carga de fotografías o captura directa desde la cámara de diagramas dibujados en pizarras blancas o papel. → realiza UC10
-- **RF-03.2:** Procesamiento con modelo multimodal (Google Gemini 2.0 Flash) con prompt estructurado de extracción de grafos en JSON canónico. → realiza UC10
+- **RF-03.2:** Procesamiento con modelo multimodal (OpenAI GPT-5.6 Luna; originalmente Google Gemini 2.0 Flash, ver nota de migración en §17) con prompt estructurado de extracción de grafos en JSON canónico. → realiza UC10
 - **RF-03.3:** Modal de revisión interactiva (*Human-in-the-Loop*): muestra lado a lado la imagen original y la propuesta detectada para que el usuario valide, corrija nombres o tipos mal detectados y confirme la fusión al lienzo. → realiza UC10
 
 ### RF-04: Edición Colaborativa en Tiempo Real y Exclusión Mutua Híbrida
@@ -968,12 +968,19 @@ CREATE INDEX idx_diagram_ops_client_mut ON diagram_operations(client_mutation_id
 | **Frontend Web** | React 18 + TypeScript + React Flow | Estándar de la industria para canvas interactivos basados en grafos con nodos desacoplados. |
 | **Colaboración** | WebSockets + STOMP | Conexión dúplex eficiente con canales pub/sub y soporte de interceptores de seguridad. |
 | **Exclusión Mutua**| Soft-Locks con TTL de 5s | Garantiza exclusión mutua en campos críticos sin congelar el lienzo ante caídas del cliente. |
-| **IA Web (Voz/Texto)**| Gemini 2.0 Flash + Guardrails | Latencia ultrabaja (< 350 ms) y JSON estructurado con rechazo determinista de `GENERATE_DOMAIN`. |
-| **IA Web (Visión)**| Gemini 2.0 Flash Multimodal | Alta fidelidad en OCR de pizarras manuscritas con interfaz *Human-in-the-Loop*. |
+| **IA Web (Voz/Texto)**| OpenAI GPT-5.6 Luna + Guardrails | JSON estructurado (JSON mode) con rechazo determinista de `GENERATE_DOMAIN`. |
+| **IA Web (Visión)**| OpenAI GPT-5.6 Luna Multimodal | Alta fidelidad en OCR de pizarras manuscritas con interfaz *Human-in-the-Loop*. |
 | **IA Móvil (Offline)**| STT Nativo/Vosk + Rule/Slot Matching| Cero consumo de datos móviles, latencia < 80 ms y funcionamiento 100% garantizado en modo avión. |
 | **Frontend Móvil** | React Native (Custom Dev) / Flutter | Capacidad nativa para acceder al hardware de audio y persistencia en SQLite local. |
 | **Base de Datos** | PostgreSQL 16 con JSONB | Solidez relacional para proyectos y usuarios junto a flexibilidad semiestructurada para grafos. |
 | **Infraestructura**| Docker + Nginx + AWS EC2 | Despliegue reproducible con terminación segura SSL/WSS y aislamiento de servicios. |
+
+> **Nota de migración (proveedor de IA web):** el proveedor de IA para UC08/UC09/UC10 era
+> originalmente Google Gemini 2.0 Flash. Se migró a OpenAI GPT-5.6 Luna porque el tier
+> gratuito de Gemini tiene un límite duro de 20 peticiones diarias por proyecto,
+> insuficiente para el volumen de pruebas de este proyecto, y no había presupuesto para
+> el tier de facturación de Gemini. La arquitectura de puertos/interfaces (`GeminiApiClient`,
+> `VisionGeminiClient`) no cambió: solo se reemplazaron sus implementaciones concretas.
 
 ---
 

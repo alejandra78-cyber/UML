@@ -9,6 +9,10 @@
 }
 
 .reconciliation-modal {
+  /* Diálogo siempre claro, mismo criterio que ProjectModals.css -- ver el
+     comentario ahí para el detalle completo del bug (título casi invisible en
+     SO con modo oscuro). */
+  color-scheme: light;
   background: #fff;
   border-radius: 8px;
   padding: 24px 28px;
@@ -22,8 +26,13 @@
 }
 
 .reconciliation-modal h2 {
+  /* El `color: #1a1a1a` del contenedor de arriba NO alcanza para el <h2>: hay
+     una regla global `h1, h2 { color: var(--text-h) }` en index.css que
+     matchea directo sobre el elemento y le gana a la herencia, sin importar
+     especificidad -- ver el mismo bug real en ProjectModals.css. */
   margin: 0 0 12px;
   font-size: 16px;
+  color: #1a1a1a;
 }
 
 .reconciliation-modal__summary {

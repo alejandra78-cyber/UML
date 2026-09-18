@@ -9,9 +9,11 @@ import './VisionModal.css'
 // de Pizarra)
 //
 // Conectado de verdad: POST /api/v1/diagrams/{id}/vision-import (multipart,
-// backend UC10 cerrado y verificado, 130/130 tests). Misma advertencia que
-// VoiceToolbar: sin GEMINI_API_KEY del lado de backend, la llamada real a Gemini
-// multimodal nunca se probó end-to-end con red real, solo con stubs.
+// backend UC10 cerrado y verificado, 130/130 tests). El proveedor de IA del
+// backend migró de Gemini a OpenAI (OpenAiVisionClientImpl, sin cambios en este
+// contrato HTTP) -- misma advertencia que VoiceToolbar: sin OPENAI_API_KEY del
+// lado de backend, la llamada real al modelo multimodal nunca se probó
+// end-to-end con red real, solo con stubs.
 //
 // Modal Human-in-the-Loop real: la imagen subida a un lado, el borrador detectado
 // al otro, con checkboxes para excluir clases/relaciones y edición del nombre de
@@ -117,9 +119,16 @@ export function VisionModal({ diagramId }: VisionModalProps) {
 
     try {
       const formData = new FormData()
-      formData.append('file', file)
+      // Nombre de campo "image" -- así lo espera el backend (confirmado con log
+      // real: antes decía "file" y el backend respondía 400 "Required part
+      // 'image' is not present").
+      formData.append('image', file)
       // Fetch directo, no authFetch: multipart/form-data necesita que el browser
       // arme el boundary solo -- authFetch fuerza Content-Type: application/json.
+      // A propósito NO se fija Content-Type acá: si se pusiera manualmente
+      // "multipart/form-data" sin el boundary exacto que genera el propio fetch,
+      // el backend no podría parsear las partes -- dejar que fetch lo arme solo
+      // al pasarle un FormData como body es lo correcto.
       const res = await fetch(`${API_BASE}/diagrams/${diagramId}/vision-import`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -127,7 +136,14 @@ export function VisionModal({ diagramId }: VisionModalProps) {
       })
 
       if (!res.ok) {
-        setErrorMessage(`No se pudo procesar la imagen (${res.status})`)
+        // 503 = proveedor de IA temporalmente saturado (el backend ya reintentó
+        // 2 veces con backoff antes de devolver esto) -- se distingue del resto
+        // de los 5xx, que sí son errores genéricos del servidor.
+        setErrorMessage(
+          res.status === 503
+            ? 'El asistente de IA está temporalmente saturado, probá de nuevo en unos minutos'
+            : `No se pudo procesar la imagen (${res.status})`,
+        )
         setPhase('error')
         return
       }

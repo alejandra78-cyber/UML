@@ -2,6 +2,8 @@ package com.modelcollab.ai.dto;
 
 import com.modelcollab.collaboration.dto.OperationType;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,6 +22,13 @@ import java.util.UUID;
  */
 public record AiOperation(OperationType type, UUID targetId, Map<String, Object> payload) {
     public AiOperation {
-        payload = payload == null ? Map.of() : Map.copyOf(payload);
+        // OJO: Map.copyOf (y Map.of) rechazan valores null con NullPointerException.
+        // Gemini puede devolver explicitamente "campo": null para un campo opcional que
+        // omitio (bug real encontrado con Gemini real: ADD_CLASS con "width": null hacia
+        // fallar la construccion de este record ANTES de que withDefaults() de
+        // CanonicalModelMutator llegara a ejecutarse). Mismo patron ya resuelto en
+        // StompMutationMessage/StompBroadcastMessage: un LinkedHashMap envuelto en
+        // Collections.unmodifiableMap tolera esos valores, Map.copyOf no.
+        payload = payload == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(payload));
     }
 }

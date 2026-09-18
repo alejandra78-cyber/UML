@@ -7,10 +7,11 @@ import './VoiceToolbar.css'
 // UC09 (Modelar por Comando de Texto)
 //
 // Conectado de verdad: POST /api/v1/diagrams/{id}/ai-command (backend UC08/UC09
-// cerrado y verificado, 130/130 tests). OJO: backend fue explícito en que ninguna
-// llamada real a Gemini fue probada end-to-end de su lado (sin GEMINI_API_KEY en
-// ese entorno, solo stubs sin red) -- de este lado tampoco se puede probar contra
-// Gemini real sin esa key configurada; verificarlo es tarea del usuario.
+// cerrado y verificado, 130/130 tests). El proveedor de IA del backend migró de
+// Gemini a OpenAI (OpenAiApiClientImpl, sin cambios en este contrato HTTP) --
+// OJO: sin OPENAI_API_KEY configurada del lado de backend no se puede probar
+// contra el proveedor real, solo contra stubs sin red; verificarlo es tarea del
+// usuario.
 //
 // El texto tipado y el transcripto por voz van al MISMO endpoint: la voz solo
 // resuelve "audio -> texto" vía Web Speech API del navegador
@@ -18,24 +19,48 @@ import './VoiceToolbar.css'
 // reusa el mismo submit que el campo de texto (RF-02.1: CommandPromptInput sigue
 // siendo la alternativa para ambientes con ruido o sin soporte de voz).
 //
-// La forma exacta del cuerpo de respuesta (cómo distinguir el guardrail de un
-// éxito) no fue confirmada por backend -- se lee de forma defensiva (varios
-// nombres de campo posibles) en vez de asumir un shape estricto.
+// Shape confirmado por backend (VoiceCommandResponse, ai/dto/VoiceCommandResponse.java)
+// -- ya no se lee de forma defensiva. El cambio real en el diagrama llega por el
+// broadcast STOMP normal (cada operación aplicada se difunde igual que una
+// mutación manual); este cuerpo HTTP es solo el resumen de confirmación.
+interface VoiceCommandResponse {
+  guardrailRejected: boolean
+  guardrailMessage: string | null
+  appliedCount: number
+  rejectedCount: number
+  truncated: boolean
+  rejectedReasons: string[]
+}
 
 interface AiCommandFeedback {
-  kind: 'success' | 'info' | 'error'
+  kind: 'success' | 'partial' | 'guardrail' | 'error'
   message: string
 }
 
-function extractMessage(body: unknown): string | null {
-  if (body && typeof body === 'object') {
-    const record = body as Record<string, unknown>
-    for (const key of ['message', 'guardrailMessage', 'error', 'reason']) {
-      const value = record[key]
-      if (typeof value === 'string' && value.trim()) return value
-    }
+function buildFeedback(response: VoiceCommandResponse): AiCommandFeedback {
+  if (response.guardrailRejected) {
+    // El guardrail SIEMPRE viene como 200 (es un resultado de negocio válido, no
+    // un error) -- nunca se llamó al proveedor de IA para aplicar nada, no hay
+    // broadcast STOMP que esperar en este caso.
+    return { kind: 'guardrail', message: response.guardrailMessage ?? 'El asistente no puede aplicar ese pedido.' }
   }
-  return null
+
+  const parts: string[] = [
+    response.appliedCount === 1 ? '1 operación aplicada.' : `${response.appliedCount} operaciones aplicadas.`,
+  ]
+  if (response.truncated) {
+    parts.push('El asistente de IA interpretó más de 5 operaciones; se aplicaron solo las primeras 5 (RF-02.6).')
+  }
+  if (response.rejectedCount > 0) {
+    parts.push(
+      `${response.rejectedCount === 1 ? '1 operación rechazada' : `${response.rejectedCount} operaciones rechazadas`}: ${response.rejectedReasons.join('; ')}`,
+    )
+  }
+
+  return {
+    kind: response.rejectedCount > 0 || response.truncated ? 'partial' : 'success',
+    message: parts.join(' '),
+  }
 }
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
@@ -74,27 +99,28 @@ export function VoiceToolbar({ diagramId }: VoiceToolbarProps) {
         body: JSON.stringify({ command: trimmed }),
       })
 
-      let body: unknown = null
-      try {
-        body = await res.json()
-      } catch {
-        // Respuesta sin cuerpo JSON (p.ej. 204): no es un error por sí solo.
-      }
-      const message = extractMessage(body)
-
       if (!res.ok) {
-        setFeedback({ kind: 'error', message: message ?? `El backend rechazó el comando (${res.status})` })
-      } else if (message) {
-        // No hay forma confirmada de distinguir "guardrail" de "éxito con nota" en
-        // el shape de la respuesta -- si vino un mensaje explícito, se muestra tal
-        // cual, nunca como error genérico.
-        setFeedback({ kind: 'info', message })
-      } else {
+        // 404/403 son los únicos casos de error HTTP real de este endpoint (rol
+        // insuficiente o diagrama inexistente, antes de llegar a interpretar nada)
+        // -- el guardrail en cambio siempre responde 200, ver buildFeedback. 503 =
+        // proveedor de IA temporalmente saturado (el backend ya reintentó 2 veces
+        // con backoff antes de devolver esto).
         setFeedback({
-          kind: 'success',
-          message: 'Comando enviado — los cambios deberían aplicarse en el diagrama en unos segundos.',
+          kind: 'error',
+          message:
+            res.status === 403
+              ? 'Necesitás ser miembro con permisos de edición para usar comandos de IA'
+              : res.status === 404
+                ? 'No se encontró el diagrama'
+                : res.status === 503
+                  ? 'El asistente de IA está temporalmente saturado, probá de nuevo en unos minutos'
+                  : `El backend rechazó el comando (${res.status})`,
         })
+        return
       }
+
+      const response: VoiceCommandResponse = await res.json()
+      setFeedback(buildFeedback(response))
       setCommandText('')
     } catch {
       setFeedback({ kind: 'error', message: 'No se pudo contactar al backend en http://localhost:8080' })

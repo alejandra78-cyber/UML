@@ -7,10 +7,19 @@
 
 .diagram-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  row-gap: 6px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--border, #ddd);
+  /* Red de seguridad además de agrupar en menús desplegables (ver
+     ToolbarDropdown): en una pantalla angosta (p.ej. laptop en un proyector)
+     incluso los controles de uso frecuente pueden no entrar en una sola fila.
+     Antes esto no tenía wrap y el borde derecho se cortaba en silencio --
+     confirmado con ViewModeToggle quedando fuera de vista tras agregar los
+     botones de las últimas oleadas. Con wrap, lo que no entra pasa a la
+     siguiente línea en vez de desaparecer sin aviso. */
 }
 
 .diagram-toolbar h1 {
@@ -58,6 +67,21 @@
 .diagram-toolbar__group--relations .diagram-toolbar__icon-btn {
   padding: 6px 9px;
   font-size: 14px;
+}
+
+/* El emoji 🗑️ de "Eliminar proyecto" se renderiza en tonos grises/plateados en
+   Segoe UI Emoji (Windows) por diseño del glyph -- se confunde a simple vista
+   con un botón deshabilitado aunque NO lo está (verificado: el atributo
+   `disabled` es false salvo que falte projectId o esté en curso el borrado).
+   Este color deja claro que es una acción activa y destructiva, sin depender
+   del render del emoji en cada sistema operativo. */
+.diagram-toolbar__icon-btn--danger {
+  color: #b91c1c;
+  border-color: #e0a3a3;
+}
+
+.diagram-toolbar__icon-btn--danger:hover:not(:disabled) {
+  background: #fdecea;
 }
 
 .diagram-toolbar__icon-btn--armed {
@@ -123,6 +147,45 @@
    buen contraste, agrandado en hover, y glow cuando reactflow lo marca como
    destino válido durante un arrastre (.react-flow__handle-valid, confirmado
    empíricamente: reactflow no lo documenta como clase pública pero sí la aplica). */
+/* BUG: los símbolos de relación (rombo de agregación/composición, triángulo de
+   herencia, flecha de dependencia/navegabilidad) quedaban tapados por la caja
+   de una clase cuando el waypoint se arrastraba de forma que el marcador
+   terminaba geométricamente detrás del área de esa clase. Causa real
+   confirmada con getComputedStyle (no era una suposición): reactflow pinta
+   `.react-flow__nodes` (z-index: auto, ~0 efectivo) ENCIMA de
+   `.react-flow__edges` (z-index: 0) porque, al estar ambos en el mismo nivel
+   de stacking, gana el que viene después en el DOM -- nodes, siempre. Subir
+   el z-index de la capa de edges por encima de la de nodes lo resuelve para
+   CUALQUIER relación, no solo cuando se mueve el waypoint. Efecto secundario
+   aceptado a propósito: una línea puede ahora cruzar visualmente por encima
+   de una clase que no conecta, en vez de esconderse detrás -- es el
+   comportamiento pedido ("el marcador SIEMPRE visible, sin importar hacia
+   qué lado se mueva el waypoint"). Necesita !important: reactflow fija
+   `z-index: 0` como estilo INLINE en este elemento (confirmado leyendo el
+   atributo `style` real del DOM, no una suposición) -- un inline style
+   siempre le gana a una regla de hoja de estilos sin importar
+   especificidad, esa es la única forma de pisarlo. */
+.react-flow__edges {
+  z-index: 3 !important;
+}
+
+/* Efecto colateral real del fix de arriba que encontré al re-probar: al subir
+   .react-flow__edges por encima de .react-flow__nodes, también quedó por
+   encima de .react-flow__edgelabel-renderer (z-index: auto, sin valor
+   explícito -- pierde contra CUALQUIER hermano con z-index explícito, sin
+   importar el orden en el DOM). Ese overlay es donde vive el waypoint
+   arrastrable, el panel de edición y los labels de multiplicidad -- al quedar
+   debajo de la capa de edges, el propio trazo de la línea empezó a
+   interceptar los clics/arrastres que antes le llegaban al waypoint
+   (confirmado: el waypoint dejaba de moverse). Se sube explícitamente por
+   encima de la nueva capa de edges para que ese overlay flotante siga siendo
+   SIEMPRE el más interactivo/visible de los tres. */
+.react-flow__edgelabel-renderer {
+  /* Ya es position:absolute por su propia hoja de estilos (confirmado con
+     getComputedStyle) -- no tocar `position` acá, alcanza con el z-index. */
+  z-index: 4 !important;
+}
+
 .react-flow__handle {
   width: 9px;
   height: 9px;
@@ -134,9 +197,12 @@
 /* "Aumentar ligeramente en hover" se logra con un anillo de box-shadow en vez de
    cambiar width/height: es un efecto visualmente equivalente sin tocar el layout
    box del handle. (La causa real de que las conexiones dejaran de completarse en
-   un momento de esta tarea NO fue esto -- fue que el botón "+ atributo" cambiaba
+   un momento de esta tarea NO fue esto -- fue un botón "+ atributo" que cambiaba
    la altura de la clase en pleno arrastre al activarse :hover sobre un handle
-   descendiente; ver el comentario de .uml-class-node__add en UmlClassNode.css.) */
+   descendiente; ese botón ya no existe -- se eliminó por decisión de producto,
+   ver UmlClassNode.tsx/.css -- pero la lección sobre por qué NUNCA cambiar
+   dimensiones de un nodo en :hover mientras reactflow puede estar en medio de un
+   drag sigue aplicando a cualquier elemento nuevo que se agregue acá.) */
 .react-flow__handle:hover {
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.5);
 }

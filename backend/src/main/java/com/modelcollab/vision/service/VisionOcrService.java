@@ -4,7 +4,9 @@ import com.modelcollab.metamodel.model.Attribute;
 import com.modelcollab.metamodel.model.AttributeType;
 import com.modelcollab.metamodel.model.CanonicalModel;
 import com.modelcollab.metamodel.model.ClassEntity;
+import com.modelcollab.metamodel.model.Method;
 import com.modelcollab.metamodel.model.Multiplicity;
+import com.modelcollab.metamodel.model.Parameter;
 import com.modelcollab.metamodel.model.Position;
 import com.modelcollab.metamodel.model.Relationship;
 import com.modelcollab.metamodel.model.RelationshipType;
@@ -107,7 +109,7 @@ public class VisionOcrService {
                     continue;
                 }
                 AttributeType type = parseAttributeType(draftAttribute.type(), draftClass.name(), draftAttribute.name(), warnings);
-                boolean primaryKey = draftAttribute.primaryKey();
+                boolean primaryKey = primaryKeyOrDefault(draftAttribute);
                 attributes.add(Attribute.builder()
                         .id(UUID.randomUUID())
                         .name(draftAttribute.name())
@@ -118,12 +120,36 @@ public class VisionOcrService {
                         .build());
             }
 
+            List<Method> methods = new ArrayList<>();
+            for (GeminiDraftMethod draftMethod : draftClass.methods()) {
+                if (draftMethod.name() == null || draftMethod.name().isBlank()) {
+                    warnings.add("Se descarto un metodo sin nombre en la clase '" + draftClass.name() + "'");
+                    continue;
+                }
+                List<Parameter> parameters = new ArrayList<>();
+                for (GeminiDraftParameter draftParameter : draftMethod.parameters()) {
+                    if (draftParameter.name() == null || draftParameter.name().isBlank()) {
+                        continue;
+                    }
+                    String parameterType = blankToDefault(draftParameter.type(), "String");
+                    parameters.add(new Parameter(draftParameter.name(), parameterType));
+                }
+                String returnType = blankToDefault(draftMethod.returnType(), "void");
+                // Visibility PUBLIC por defecto: Method no tiene Builder (a diferencia de
+                // Attribute/ClassEntity/Relationship) y ni el esquema canonico ni el propio
+                // record declaran un default para este campo; PUBLIC es la convencion mas
+                // comun para operaciones dibujadas en un boceto de pizarra (interfaces/
+                // contratos de clase, ej. patron Composite: operation()/add()/remove()).
+                methods.add(new Method(UUID.randomUUID(), draftMethod.name(), returnType, Visibility.PUBLIC, parameters));
+            }
+
             ClassEntity newClass = ClassEntity.builder()
                     .id(newId)
                     .name(draftClass.name())
                     .visibility(Visibility.PUBLIC)
                     .position(new Position(0, 0)) // placeholder; se reasigna abajo via GridLayoutEngine
                     .attributes(attributes)
+                    .methods(methods)
                     .build();
             newClasses.add(newClass);
             idByName.put(normalize(draftClass.name()), newId);
@@ -211,6 +237,10 @@ public class VisionOcrService {
                     + "; se uso VARCHAR por defecto");
             return AttributeType.VARCHAR;
         }
+    }
+
+    private static String blankToDefault(String value, String defaultValue) {
+        return (value == null || value.isBlank()) ? defaultValue : value;
     }
 
     private RelationshipType parseRelationshipType(String rawType, List<String> warnings) {
@@ -308,6 +338,11 @@ public class VisionOcrService {
                       "existingClassId": null,
                       "attributes": [
                         { "name": "nombreAtributo", "type": "VARCHAR", "primaryKey": false }
+                      ],
+                      "methods": [
+                        { "name": "nombreMetodo", "returnType": "void", "parameters": [
+                          { "name": "nombreParametro", "type": "String" }
+                        ] }
                       ]
                     }
                   ],
@@ -321,6 +356,14 @@ public class VisionOcrService {
                     }
                   ]
                 }
+
+                IMPORTANTE: no omitas la lista "methods" de cada clase. Un boceto de UML dibuja
+                los metodos/operaciones en el compartimento inferior de cada caja de clase (ej.
+                "+ operation()", "+ add(Component)", "# getChild(int): Component") -- detectalos
+                igual que los atributos, con su nombre, tipo de retorno si es legible (usa "void"
+                si no hay ninguno visible) y sus parametros si los hay (nombre + tipo; si el tipo
+                no es legible en la imagen usa "String"). Si una clase realmente no tiene ningun
+                metodo dibujado, devolve "methods": [] para esa clase, no omitas la clave.
 
                 Valores validos de "type" de atributo: INTEGER, BIGINT, VARCHAR, TEXT, DECIMAL,
                 BOOLEAN, DATE, DATETIME, UUID. Valores validos de "type" de relacion: ASSOCIATION,
@@ -339,13 +382,40 @@ public class VisionOcrService {
         }
     }
 
-    private record GeminiDraftClass(String name, String existingClassId, List<GeminiDraftAttribute> attributes) {
+    private record GeminiDraftClass(String name, String existingClassId, List<GeminiDraftAttribute> attributes,
+                                     List<GeminiDraftMethod> methods) {
         private GeminiDraftClass {
             attributes = attributes == null ? List.of() : attributes;
+            methods = methods == null ? List.of() : methods;
         }
     }
 
-    private record GeminiDraftAttribute(String name, String type, boolean primaryKey) {
+    private record GeminiDraftMethod(String name, String returnType, List<GeminiDraftParameter> parameters) {
+        private GeminiDraftMethod {
+            parameters = parameters == null ? List.of() : parameters;
+        }
+    }
+
+    private record GeminiDraftParameter(String name, String type) {
+    }
+
+    /**
+     * {@code primaryKey} es {@link Boolean} (no {@code boolean}) a proposito: este
+     * record se deserializa directo del JSON crudo de Gemini via
+     * {@code objectMapper.readValue(json, GeminiSketchDraft.class)} -- mismo tipo de
+     * fragilidad que el bug real encontrado en {@code AiOperation} (payload con
+     * {@code Map.copyOf}), un paso mas atras en la cadena: si Gemini omite el campo o
+     * lo devuelve explicitamente {@code null} para un atributo donde no aplica, un
+     * {@code boolean} primitivo aqui haria fallar la deserializacion completa de
+     * {@link GeminiSketchDraft} con {@code InvalidNullException} antes de llegar
+     * siquiera a {@code Attribute.builder()}. Ver {@link #primaryKeyOrDefault(GeminiDraftAttribute)}.
+     */
+    private record GeminiDraftAttribute(String name, String type, Boolean primaryKey) {
+    }
+
+    /** {@code null} (campo omitido/explicito) se trata igual que {@code false}, mismo default que declara el esquema canonico (seccion 7) para {@code isPrimaryKey}. */
+    private static boolean primaryKeyOrDefault(GeminiDraftAttribute attribute) {
+        return Boolean.TRUE.equals(attribute.primaryKey());
     }
 
     private record GeminiDraftRelationship(String sourceClassName, String targetClassName, String type,

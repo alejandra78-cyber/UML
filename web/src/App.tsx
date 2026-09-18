@@ -29,6 +29,7 @@ import { ImportXmiButton } from './components/ImportXmiButton'
 import { CreateProjectModal } from './components/CreateProjectModal'
 import { InviteMemberModal } from './components/InviteMemberModal'
 import { DeleteProjectButton } from './components/DeleteProjectButton'
+import { ToolbarDropdown } from './components/ToolbarDropdown'
 import { diagramStompClient } from './collaboration/stompClient'
 import { ensureActiveDiagram } from './collaboration/diagramBootstrap'
 import { useDiagramStore } from './store/useDiagramStore'
@@ -373,23 +374,34 @@ function DiagramWorkspace() {
           </span>
         )}
 
-        <div className="diagram-toolbar__group" role="group" aria-label="Generación y exportación de artefactos">
+        {/* Uso frecuente durante el modelado: se queda siempre visible, sin
+            agrupar (ver reorganización de la barra más abajo). */}
+        <div className="diagram-toolbar__group" role="group" aria-label="Vista y comandos de IA">
+          <ViewModeToggle />
+          <VoiceToolbar diagramId={storeDiagramId} />
+        </div>
+
+        <div className="diagram-toolbar__spacer" />
+
+        {/* Uso ocasional: agrupados detrás de menús desplegables (antes eran 7
+            botones sueltos entre estos dos grupos + VisionModal, y la barra ya
+            se cortaba en el borde derecho en pantallas angostas -- ver
+            ToolbarDropdown y el flex-wrap de .diagram-toolbar como red de
+            seguridad adicional). */}
+        <ToolbarDropdown icon="📁" label="Proyecto" ariaLabel="Menú de gestión de proyecto">
+          <CreateProjectModal />
+          <InviteMemberModal projectId={projectIdRef.current} />
+          <DeleteProjectButton projectId={projectIdRef.current} />
+        </ToolbarDropdown>
+
+        <ToolbarDropdown icon="⚙️" label="Generar / Exportar" ariaLabel="Menú de generación e interoperabilidad">
           <GenerateBackendButton diagramId={storeDiagramId} />
           <GenerateMobileAppButton diagramId={storeDiagramId} />
           <ExportXmiButton diagramId={storeDiagramId} />
           <ImportXmiButton projectId={projectIdRef.current} />
-        </div>
+          <VisionModal diagramId={storeDiagramId} />
+        </ToolbarDropdown>
 
-        <div className="diagram-toolbar__group" role="group" aria-label="Gestión de proyecto">
-          <CreateProjectModal />
-          <InviteMemberModal projectId={projectIdRef.current} />
-          <DeleteProjectButton projectId={projectIdRef.current} />
-        </div>
-
-        <div className="diagram-toolbar__spacer" />
-        <ViewModeToggle />
-        <VoiceToolbar diagramId={storeDiagramId} />
-        <VisionModal diagramId={storeDiagramId} />
         <button type="button" className="diagram-toolbar__logout" onClick={logout}>
           Salir
         </button>

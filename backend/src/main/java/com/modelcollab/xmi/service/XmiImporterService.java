@@ -101,9 +101,15 @@ public class XmiImporterService {
 
     /**
      * Resultado de una importación: el {@link CanonicalModel} parseado más el
-     * nombre del diagrama tal como viene en {@code <uml:Model name="...">} (para
-     * que el controlador pueda usarlo como nombre por defecto del {@code Diagram}
-     * nuevo si el llamador no especifica uno propio).
+     * nombre del diagrama, para que el controlador pueda usarlo como nombre por
+     * defecto del {@code Diagram} nuevo si el llamador no especifica uno propio.
+     * Se resuelve con prioridad: (1) atributo custom {@code diagramName} --
+     * formato que produce {@link XmiExporterService} desde el ajuste de UX que
+     * fija {@code uml:Model/@name} en un valor corto y genérico ("Model") para
+     * que Enterprise Architect no lo use como prefijo de namespace largo en cada
+     * clase importada; (2) atributo estándar {@code name} -- formato que producía
+     * este mismo exportador ANTES de ese ajuste (compatibilidad con archivos ya
+     * exportados) y el que trae un archivo genérico/real de otra herramienta.
      */
     public record ImportResult(String diagramName, CanonicalModel model) {
     }
@@ -143,7 +149,7 @@ public class XmiImporterService {
             throw new XmiImportException(
                     "El documento no contiene un elemento <uml:Model> (ni <Model>) -- no parece un documento XMI/UML valido");
         }
-        String diagramName = attr(modelElement, "name");
+        String diagramName = firstNonBlank(attr(modelElement, "diagramName"), attr(modelElement, "name"));
 
         // --- 1. Paquetes (name + xmi:id; los classIds se completan mas abajo, una
         // vez que sabemos que clases cuelgan de cada elemento uml:Package). ---
@@ -163,6 +169,10 @@ public class XmiImporterService {
         List<ClassEntity> classesWithPosition = new ArrayList<>();
         List<ClassEntity> classesWithoutPosition = new ArrayList<>();
         List<ClassEntity> orderedClasses = new ArrayList<>();
+        // GENERALIZATION anidadas dentro de cada clase (ver parseNestedGeneralizations
+        // mas abajo) -- se acumulan aca, en la misma pasada que ya recorre cada clase,
+        // y se agregan a la lista final de relaciones junto con las de nivel superior.
+        List<Relationship> nestedGeneralizations = new ArrayList<>();
 
         for (Element classElement : classElements(document)) {
             ClassEntity classEntity = parseClass(classElement);
@@ -178,6 +188,8 @@ public class XmiImporterService {
                 String parentRawId = requireId(parentPackage);
                 classIdsByPackageRawId.computeIfAbsent(parentRawId, k -> new ArrayList<>()).add(classEntity.id());
             }
+
+            nestedGeneralizations.addAll(parseNestedGeneralizations(classElement, classEntity.id()));
         }
 
         // --- 3. Auto-layout (GridLayoutEngine) para las clases sin <position> explicita. ---
@@ -190,8 +202,12 @@ public class XmiImporterService {
             packages.add(new Package(resolveId(draft.rawId()), draft.name(), classIds));
         }
 
-        // --- 5. Relaciones. ---
-        List<Relationship> relationships = new ArrayList<>();
+        // --- 5. Relaciones. GENERALIZATION anidada (formato nuevo, ver
+        // parseNestedGeneralizations) + relaciones de nivel superior (ASSOCIATION/
+        // AGGREGATION/COMPOSITION/MANY_TO_MANY siempre, y GENERALIZATION/DEPENDENCY/
+        // REALIZATION solo en archivos exportados ANTES de la correccion de
+        // Generalization anidada -- ver xmiTypeFor/RELATIONSHIP_XMI_TYPES). ---
+        List<Relationship> relationships = new ArrayList<>(nestedGeneralizations);
         for (Element relationshipElement : relationshipElements(document)) {
             relationships.add(parseRelationship(relationshipElement));
         }
@@ -323,6 +339,53 @@ public class XmiImporterService {
         return result;
     }
 
+    /**
+     * UML2: {@code Generalization} no es una relacion de nivel superior -- es una
+     * propiedad de la clase especifica ({@code Classifier::generalization}), y se
+     * serializa como un elemento {@code <generalization>} ANIDADO dentro del
+     * {@code packagedElement} de esa clase, con SOLO {@code xmi:id} + {@code general}
+     * (el {@code specific} es implicito: la clase que lo contiene). Confirmado
+     * contra un archivo XMI real y publico ({@code BasicTypes.uml.xmi},
+     * {@code github.com/STIXProject/specifications}) tras que la estructura anterior
+     * (packagedElement propio con general/specific como atributos planos) resultara
+     * en que Enterprise Architect real (v15) no conectara NINGUNA Generalization.
+     *
+     * @param classElement   el {@code packagedElement} de la clase que puede contener
+     *                       cero, una o mas (en teoria; MetamodelValidator rechaza mas
+     *                       de una en el propio modelo, pero un archivo externo podria
+     *                       traerlas) {@code <generalization>} anidadas
+     * @param specificClassId id ya resuelto de {@code classElement} (la clase que
+     *                       contiene el elemento ES el extremo "specific")
+     */
+    private List<Relationship> parseNestedGeneralizations(Element classElement, UUID specificClassId) {
+        List<Relationship> result = new ArrayList<>();
+        for (Element generalizationElement : directChildrenByAnyTag(classElement, "generalization", "Generalization")) {
+            String rawGeneral = attr(generalizationElement, "general");
+            if (rawGeneral == null || rawGeneral.isBlank()) {
+                continue; // elemento incompleto/invalido -- se descarta en silencio, no se puede resolver el padre
+            }
+            String rawId = firstNonBlank(attr(generalizationElement, "xmi:id"), attr(generalizationElement, "id"));
+            Relationship.Builder builder = Relationship.builder()
+                    .id(rawId != null ? resolveId(rawId) : UUID.randomUUID())
+                    .sourceClassId(specificClassId)
+                    .targetClassId(resolveId(rawGeneral))
+                    .type(RelationshipType.GENERALIZATION);
+
+            Element waypointsElement = firstChildByAnyTag(generalizationElement, "waypoints");
+            if (waypointsElement != null) {
+                List<Waypoint> waypoints = new ArrayList<>();
+                for (Element waypointElement : directChildrenByAnyTag(waypointsElement, "waypoint")) {
+                    double x = parseDouble(attr(waypointElement, "x"), 0);
+                    double y = parseDouble(attr(waypointElement, "y"), 0);
+                    waypoints.add(new Waypoint(x, y));
+                }
+                builder.waypoints(waypoints);
+            }
+            result.add(builder.build());
+        }
+        return result;
+    }
+
     private Relationship parseRelationship(Element relationshipElement) {
         String rawId = requireId(relationshipElement);
         String xmiType = firstNonBlank(attr(relationshipElement, "xmi:type"), attr(relationshipElement, "type"));
@@ -333,8 +396,33 @@ public class XmiImporterService {
 
         RelationshipType type = resolveRelationshipType(relationshipElement, xmiType, sourceEnd, targetEnd);
 
-        UUID sourceClassId = sourceEnd != null ? resolveEndClassId(sourceEnd) : UUID.randomUUID();
-        UUID targetClassId = targetEnd != null ? resolveEndClassId(targetEnd) : UUID.randomUUID();
+        // GENERALIZATION/DEPENDENCY/REALIZATION no tienen "extremos" (ownedEnd) en UML2
+        // -- se resuelven via general/specific o client/supplier, atributos directos
+        // por idref sobre el propio packagedElement (bug real corregido tras probar
+        // contra Enterprise Architect real: con ownedEnd, EA no conectaba estos tipos
+        // en absoluto). Se prioriza ese camino y se cae a ownedEnd solo por
+        // compatibilidad con archivos exportados ANTES de esa correccion (donde estos
+        // tipos si tenian ownedEnd, aunque no fuera lo estandar).
+        UUID sourceClassId;
+        UUID targetClassId;
+        if (type == RelationshipType.GENERALIZATION) {
+            String specific = attr(relationshipElement, "specific");
+            String general = attr(relationshipElement, "general");
+            sourceClassId = specific != null ? resolveId(specific)
+                    : (sourceEnd != null ? resolveEndClassId(sourceEnd) : UUID.randomUUID());
+            targetClassId = general != null ? resolveId(general)
+                    : (targetEnd != null ? resolveEndClassId(targetEnd) : UUID.randomUUID());
+        } else if (type == RelationshipType.DEPENDENCY || type == RelationshipType.REALIZATION) {
+            String client = attr(relationshipElement, "client");
+            String supplier = attr(relationshipElement, "supplier");
+            sourceClassId = client != null ? resolveId(client)
+                    : (sourceEnd != null ? resolveEndClassId(sourceEnd) : UUID.randomUUID());
+            targetClassId = supplier != null ? resolveId(supplier)
+                    : (targetEnd != null ? resolveEndClassId(targetEnd) : UUID.randomUUID());
+        } else {
+            sourceClassId = sourceEnd != null ? resolveEndClassId(sourceEnd) : UUID.randomUUID();
+            targetClassId = targetEnd != null ? resolveEndClassId(targetEnd) : UUID.randomUUID();
+        }
 
         OwningSide owningSide = parseOwningSide(attr(relationshipElement, "owningSide"));
         boolean isNavigable = parseBoolean(attr(relationshipElement, "isNavigable"), true);
@@ -380,8 +468,22 @@ public class XmiImporterService {
         return ends.size() > fallbackIndex ? ends.get(fallbackIndex) : null;
     }
 
+    /**
+     * Resuelve la clase referenciada por un extremo de relacion, en orden de
+     * prioridad: (1) elemento anidado {@code <type xmi:idref="..."/>} -- formato
+     * estandar OMG XMI 2.x y el que produce {@link XmiExporterService} desde el
+     * fix del bug real de Enterprise Architect (un {@code ownedEnd} sin esta
+     * referencia formal aparecia como conector sin extremos resueltos, dibujado
+     * suelto sin linea hacia ninguna clase); (2) atributo plano {@code type="..."}
+     * -- formato que produjo este mismo exportador ANTES de ese fix, se mantiene
+     * por compatibilidad hacia atras con archivos ya exportados; (3) atributo
+     * {@code xmi:idref} directo sobre el propio {@code ownedEnd} -- variante que
+     * usan algunos dialectos Sparx EA cuando el extremo mismo es la referencia.
+     */
     private UUID resolveEndClassId(Element endElement) {
-        String typeRef = attr(endElement, "type");
+        Element typeElement = firstChildByAnyTag(endElement, "type");
+        String typeIdRef = typeElement != null ? attr(typeElement, "xmi:idref") : null;
+        String typeRef = firstNonBlank(typeIdRef, firstNonBlank(attr(endElement, "type"), attr(endElement, "xmi:idref")));
         if (typeRef == null || typeRef.isBlank()) {
             return UUID.randomUUID();
         }

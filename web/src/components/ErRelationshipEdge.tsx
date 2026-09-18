@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, Position, getSmoothStepPath, useReactFlow, type EdgeProps } from 'reactflow'
 import { useDiagramStore } from '../store/useDiagramStore'
+import { getRectIntersection, getRectSide, rectCenter, useNodeRect } from '../utils/edgeGeometry'
 import { MULTIPLICITY_VALUES, type Multiplicity, type Relationship, type Waypoint } from '../types/diagram'
 import './ErRelationshipEdge.css'
 
@@ -88,16 +89,18 @@ function CrowFootMarker({
 }
 
 /**
- * Ángulo de salida del marcador Crow's Foot según el LADO fijo del handle
- * (ErTableNode siempre ancla target=Left / source=Right, sin docking dinámico),
- * no una aproximación diagonal hacia el waypoint/midpoint: esa aproximación
- * daba un ángulo correcto solo cuando las dos clases estaban alineadas en Y
- * (entonces la diagonal coincidía por casualidad con 0°/180°), pero con
- * cualquier desnivel vertical entre clases el ángulo calculado se alejaba mucho
- * de la dirección real de salida del handle -- confirmado con Playwright:
- * clases desalineadas en Y daban rotate(171°) en el origen y rotate(-8.6°) en
- * el destino, en vez de los 0°/180° reales, lo que deformaba la horquilla
- * hasta verse como un chevron doble o casi desaparecer contra la línea.
+ * Ángulo de salida del marcador Crow's Foot según el LADO real del punto de
+ * conexión. Antes esto era literalmente el lado FIJO del handle (ErTableNode
+ * siempre ancla target=Left / source=Right, sin docking dinámico) -- una
+ * aproximación diagonal hacia el waypoint/midpoint se había descartado en su
+ * momento porque solo daba un ángulo correcto cuando las dos entidades estaban
+ * alineadas en Y (con desnivel vertical el ángulo se alejaba mucho del real,
+ * confirmado con Playwright: rotate(171°)/rotate(-8.6°) en vez de 0°/180°).
+ * ESE problema era de la aproximación diagonal, no del enfoque geométrico en
+ * sí: ahora sourcePosition/targetPosition llegan ya resueltos con
+ * getRectSide sobre el punto de intersección real contra el rectángulo del
+ * nodo (ver useNodeRect/edgeGeometry.ts), que sí es exacto sin importar el
+ * desnivel -- reemplaza tanto el handle fijo como la vieja aproximación.
  */
 function positionToAngle(position: Position): number {
   switch (position) {
@@ -114,6 +117,8 @@ function positionToAngle(position: Position): number {
 
 export function ErRelationshipEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -130,22 +135,60 @@ export function ErRelationshipEdge({
 
   const [editingEnd, setEditingEnd] = useState<EditableEnd | null>(null)
 
+  // Mismo bug (y mismo fix) que UmlRelationshipEdge: ver el comentario de
+  // cabecera de edgeGeometry.ts. El punto de conexión se recalcula contra el
+  // rectángulo real de cada entidad en vez de depender del handle fijo
+  // target=Left/source=Right de ErTableNode.
+  const sourceRect = useNodeRect(source)
+  const targetRect = useNodeRect(target)
+
   // Mismo mecanismo de waypoint arrastrable que UmlRelationshipEdge (sección 8.1):
   // se reutiliza updateWaypoints del store para mantener consistencia de UX entre
   // ambas vistas (solo cambia la presentación).
   const savedWaypoint: Waypoint | undefined = relationship.waypoints?.[0]
-  const defaultMidpoint: Waypoint = { x: (sourceX + targetX) / 2, y: (sourceY + targetY) / 2 }
   const [dragPosition, setDragPosition] = useState<Waypoint | null>(null)
-  const waypoint = dragPosition ?? savedWaypoint ?? defaultMidpoint
+  const activeWaypoint = dragPosition ?? savedWaypoint ?? null
 
-  const path = savedWaypoint || dragPosition
-    ? `M ${sourceX},${sourceY} L ${waypoint.x},${waypoint.y} L ${targetX},${targetY}`
-    : getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition })[0]
+  const floatingSourcePoint =
+    sourceRect && targetRect
+      ? getRectIntersection(sourceRect, activeWaypoint ?? rectCenter(targetRect))
+      : null
+  const floatingTargetPoint =
+    sourceRect && targetRect
+      ? getRectIntersection(targetRect, activeWaypoint ?? rectCenter(sourceRect))
+      : null
 
-  // Ángulo de salida real de cada extremo, según el lado fijo de su handle
-  // (ver positionToAngle) -- independiente de dónde caiga el waypoint/midpoint.
-  const sourceAngle = positionToAngle(sourcePosition)
-  const targetAngle = positionToAngle(targetPosition)
+  const resolvedSourceX = floatingSourcePoint?.x ?? sourceX
+  const resolvedSourceY = floatingSourcePoint?.y ?? sourceY
+  const resolvedTargetX = floatingTargetPoint?.x ?? targetX
+  const resolvedTargetY = floatingTargetPoint?.y ?? targetY
+  const resolvedSourcePosition =
+    floatingSourcePoint && sourceRect ? getRectSide(sourceRect, floatingSourcePoint) : sourcePosition
+  const resolvedTargetPosition =
+    floatingTargetPoint && targetRect ? getRectSide(targetRect, floatingTargetPoint) : targetPosition
+
+  const defaultMidpoint: Waypoint = {
+    x: (resolvedSourceX + resolvedTargetX) / 2,
+    y: (resolvedSourceY + resolvedTargetY) / 2,
+  }
+  const waypoint = activeWaypoint ?? defaultMidpoint
+
+  const path = activeWaypoint
+    ? `M ${resolvedSourceX},${resolvedSourceY} L ${waypoint.x},${waypoint.y} L ${resolvedTargetX},${resolvedTargetY}`
+    : getSmoothStepPath({
+        sourceX: resolvedSourceX,
+        sourceY: resolvedSourceY,
+        sourcePosition: resolvedSourcePosition,
+        targetX: resolvedTargetX,
+        targetY: resolvedTargetY,
+        targetPosition: resolvedTargetPosition,
+      })[0]
+
+  // Ángulo de salida real de cada extremo, según el lado ya resuelto
+  // dinámicamente (ver positionToAngle) -- independiente de dónde caiga el
+  // waypoint/midpoint.
+  const sourceAngle = positionToAngle(resolvedSourcePosition)
+  const targetAngle = positionToAngle(resolvedTargetPosition)
 
   // Muchos-a-muchos: pata de gallo (crow's foot) en AMBOS extremos, fija en "0..*"
   // sin importar sourceMultiplicity/targetMultiplicity guardados -- es notación
@@ -156,8 +199,14 @@ export function ErRelationshipEdge({
 
   // Etiquetas de multiplicidad (editables) posicionadas un poco más lejos del nodo
   // que el marcador Crow's Foot, para no superponerse visualmente con él.
-  const sourceLabelPos = { x: sourceX + (targetX - sourceX) * 0.3, y: sourceY + (targetY - sourceY) * 0.3 }
-  const targetLabelPos = { x: sourceX + (targetX - sourceX) * 0.7, y: sourceY + (targetY - sourceY) * 0.7 }
+  const sourceLabelPos = {
+    x: resolvedSourceX + (resolvedTargetX - resolvedSourceX) * 0.3,
+    y: resolvedSourceY + (resolvedTargetY - resolvedSourceY) * 0.3,
+  }
+  const targetLabelPos = {
+    x: resolvedSourceX + (resolvedTargetX - resolvedSourceX) * 0.7,
+    y: resolvedSourceY + (resolvedTargetY - resolvedSourceY) * 0.7,
+  }
 
   function commitMultiplicity(end: EditableEnd, value: Multiplicity) {
     updateRelationship(relationship.id, end === 'source' ? { sourceMultiplicity: value } : { targetMultiplicity: value })
@@ -224,8 +273,8 @@ export function ErRelationshipEdge({
   return (
     <>
       <BaseEdge id={id} path={path} style={{ stroke: '#2b5d34', strokeWidth: 1.5 }} />
-      <CrowFootMarker x={sourceX} y={sourceY} angleDeg={sourceAngle} multiplicity={sourceMultiplicityForMarker} />
-      <CrowFootMarker x={targetX} y={targetY} angleDeg={targetAngle} multiplicity={targetMultiplicityForMarker} />
+      <CrowFootMarker x={resolvedSourceX} y={resolvedSourceY} angleDeg={sourceAngle} multiplicity={sourceMultiplicityForMarker} />
+      <CrowFootMarker x={resolvedTargetX} y={resolvedTargetY} angleDeg={targetAngle} multiplicity={targetMultiplicityForMarker} />
       <EdgeLabelRenderer>
         {renderLabel('source', sourceLabelPos)}
         {renderLabel('target', targetLabelPos)}

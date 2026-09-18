@@ -4,6 +4,7 @@
   border-radius: 4px;
   border: 1px solid #ccc;
   background: transparent;
+  color: #1a1a1a;
   cursor: pointer;
 }
 
@@ -18,7 +19,12 @@
 }
 
 .vision-modal__dialog {
+  /* Diálogo siempre claro -- mismo criterio y mismo bug real que
+     ProjectModals.css/ReconciliationModal.css (título/controles heredando
+     variables de tema oscuro mientras el fondo queda fijo en blanco). */
+  color-scheme: light;
   background: #fff;
+  color: #1a1a1a;
   border-radius: 8px;
   padding: 24px 32px;
   min-width: 240px;
@@ -38,6 +44,7 @@
   border-radius: 4px;
   border: 1px solid #ccc;
   background: transparent;
+  color: #1a1a1a;
   cursor: pointer;
 }
 
