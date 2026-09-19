@@ -6,8 +6,7 @@ import './GenerateBackendButton.css'
 
 // PKG-05/06 Generación de Artefactos — UC13 (Generar Backend Spring Boot).
 // Conectado de verdad: el backend de validación + generación ya está cerrado y
-// verificado (a diferencia de GenerateMobileAppButton/ImportXmiButton, que siguen
-// siendo placeholders porque sus endpoints todavía no existen).
+// verificado.
 
 interface ValidationIssue {
   severity: 'ERROR' | 'WARNING'

@@ -11,6 +11,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { LoginScreen } from './auth/LoginScreen'
 import { useAuthStore } from './auth/useAuthStore'
+import { ProjectSelector } from './components/ProjectSelector'
 import { UmlClassNode } from './features/modelado-manual/UmlClassNode'
 import { UmlRelationshipEdge, RELATIONSHIP_TYPE_OPTIONS } from './features/modelado-manual/UmlRelationshipEdge'
 import { ErTableNode } from './components/ErTableNode'
@@ -23,7 +24,6 @@ import { useOfflineSync } from './features/offline/useOfflineSync'
 import { VoiceToolbar } from './features/ia-asistida/VoiceToolbar'
 import { VisionModal } from './features/ia-asistida/VisionModal'
 import { GenerateBackendButton } from './components/GenerateBackendButton'
-import { GenerateMobileAppButton } from './components/GenerateMobileAppButton'
 import { ExportXmiButton } from './components/ExportXmiButton'
 import { ImportXmiButton } from './components/ImportXmiButton'
 import { CreateProjectModal } from './components/CreateProjectModal'
@@ -31,7 +31,13 @@ import { InviteMemberModal } from './components/InviteMemberModal'
 import { DeleteProjectButton } from './components/DeleteProjectButton'
 import { ToolbarDropdown } from './components/ToolbarDropdown'
 import { diagramStompClient } from './collaboration/stompClient'
-import { ensureActiveDiagram } from './collaboration/diagramBootstrap'
+import {
+  resolveDiagramForProject,
+  tryResolveCachedActiveDiagram,
+  type ActiveDiagramResult,
+  type ProjectResponse,
+  type SnapshotResponse,
+} from './collaboration/diagramBootstrap'
 import { useDiagramStore } from './store/useDiagramStore'
 import { useViewModeStore } from './store/useViewModeStore'
 import { usePresenceStore } from './store/usePresenceStore'
@@ -92,7 +98,21 @@ function PackageToolButton() {
   )
 }
 
-function DiagramWorkspace() {
+interface DiagramWorkspaceProps {
+  projectId: string
+  diagramId: string
+  initialSnapshot: SnapshotResponse
+  /** Vuelve al selector de proyectos (botón "Mis proyectos" y post-borrado del
+   * proyecto activo, ver DeleteProjectButton). */
+  onBackToSelector: () => void
+  /** Cambia el workspace a OTRO proyecto ya resuelto (p.ej. uno recién creado
+   * desde el dropdown "Proyecto" sin salir del lienzo) -- el padre (ProjectGate)
+   * lo usa para remontar este componente con `key={diagramId}` apuntando al
+   * nuevo proyecto/diagrama. */
+  onProjectActivated: (result: ActiveDiagramResult) => void
+}
+
+function DiagramWorkspace({ projectId, diagramId, initialSnapshot, onBackToSelector, onProjectActivated }: DiagramWorkspaceProps) {
   const token = useAuthStore((state) => state.token)
   const userId = useAuthStore((state) => state.userId)
   const fullName = useAuthStore((state) => state.fullName)
@@ -133,11 +153,12 @@ function DiagramWorkspace() {
   const disconnectTransport = useDiagramStore((state) => state.disconnectTransport)
   const applyBroadcast = useDiagramStore((state) => state.applyBroadcast)
   const hydrate = useDiagramStore((state) => state.hydrate)
-  // diagramId del store (agregado para la cola offline, ver useDiagramStore.ts):
-  // se reusa acá para GenerateBackendButton/ExportXmiButton en vez de depender de
-  // diagramIdRef, que sigue existiendo para el resto de usos preexistentes
-  // (cursor remoto, STOMP) y no dispara re-render por sí solo.
-  const storeDiagramId = useDiagramStore((state) => state.diagramId)
+  // diagramId del store (usado internamente por la cola offline, ver
+  // useDiagramStore.ts -- cada acción de mutación lo lee de `get()` para
+  // encolar en IndexedDB si el transport está caído): sigue existiendo y
+  // sincronizándose en el efecto de abajo, pero YA NO hace falta leerlo de
+  // vuelta acá para las props de la barra -- `diagramId`/`projectId` llegan
+  // resueltos por props desde ProjectGate, conocidos desde el primer render.
   const setStoreDiagramId = useDiagramStore((state) => state.setDiagramId)
 
   const viewMode = useViewModeStore((state) => state.viewMode)
@@ -147,8 +168,7 @@ function DiagramWorkspace() {
   const setCurrentUserId = usePresenceStore((state) => state.setCurrentUserId)
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null)
   const lastCursorSendRef = useRef(0)
-  const diagramIdRef = useRef<string | null>(null)
-  const projectIdRef = useRef<string | null>(null)
+  const [projectActivationError, setProjectActivationError] = useState<string | null>(null)
 
   // "Modo herramienta" de relación (punto 6, barra superior): un clic en uno de los
   // 6 botones de tipo "arma" ese tipo para la SIGUIENTE conexión manual que el
@@ -160,107 +180,87 @@ function DiagramWorkspace() {
   useEffect(() => {
     if (!token || !userId) return
     // React.StrictMode (ver main.tsx) invoca este efecto dos veces en dev
-    // (mount -> cleanup -> mount) para detectar efectos no cancelables. Sin
-    // "cancelled" + AbortController, la primera ejecución (ya "cancelada")
-    // seguía completando sus fetches y llegaba a llamar igual a
-    // diagramStompClient.connect(...) -- como el cliente STOMP es un singleton,
-    // cualquiera de las dos ejecuciones podía ganar la carrera y desconectar a
-    // la otra. Si la ejecución "cancelada" ganaba, su propio guard de
-    // "cancelled" descartaba el onConnected y CONNECT_TRANSPORT nunca se
-    // llamaba: la conexión WebSocket quedaba viva pero sin transport asignado
-    // en el store, por lo que useDiagramStore.addClass() caía siempre en el
-    // fallback local sin red (transport === null) y "+ Clase" no disparaba
-    // ninguna petición.
+    // (mount -> cleanup -> mount) para detectar efectos no cancelables. Sin el
+    // guard "cancelled" en cada callback de diagramStompClient.connect, la
+    // primera ejecución (ya "cancelada") seguía completando su conexión --
+    // como el cliente STOMP es un singleton, cualquiera de las dos ejecuciones
+    // podía ganar la carrera y desconectar a la otra. Si la ejecución
+    // "cancelada" ganaba, su propio guard de "cancelled" descartaba el
+    // onConnected y CONNECT_TRANSPORT nunca se llamaba: la conexión WebSocket
+    // quedaba viva pero sin transport asignado en el store, por lo que
+    // useDiagramStore.addClass() caía siempre en el fallback local sin red
+    // (transport === null) y "+ Clase" no disparaba ninguna petición.
+    //
+    // A diferencia de antes, `diagramId`/`initialSnapshot` ya llegan resueltos
+    // por props (ver ProjectGate) -- no hay ninguna resolución async previa que
+    // cancelar acá, así que ya no hace falta el AbortController ni el
+    // try/catch alrededor de esa parte.
     let cancelled = false
-    const controller = new AbortController()
 
     updateConnectionStatus('connecting')
 
-    async function init() {
-      try {
-        // 1) Resuelve (o crea) el proyecto/diagrama activo Y su snapshot en una
-        // sola llamada de red (ver diagramBootstrap.ensureActiveDiagram).
-        const { diagramId, projectId, snapshot } = await ensureActiveDiagram(token as string, userId as string, controller.signal)
+    const parsed = JSON.parse(initialSnapshot.currentState) as Partial<CanonicalModel>
+    hydrate({
+      schemaVersion: parsed.schemaVersion ?? '1.0.0',
+      mutationVersion: parsed.mutationVersion ?? 1,
+      classes: parsed.classes ?? [],
+      relationships: parsed.relationships ?? [],
+    })
+    setStoreDiagramId(diagramId)
+
+    diagramStompClient.connect(diagramId, token, {
+      onConnected: () => {
         if (cancelled) return
-        diagramIdRef.current = diagramId
-        projectIdRef.current = projectId
-        setStoreDiagramId(diagramId)
-
-        const parsed = JSON.parse(snapshot.currentState) as Partial<CanonicalModel>
-        hydrate({
-          schemaVersion: parsed.schemaVersion ?? '1.0.0',
-          mutationVersion: parsed.mutationVersion ?? 1,
-          classes: parsed.classes ?? [],
-          relationships: parsed.relationships ?? [],
+        // Antes de pasar a 'online' de verdad, revisa si quedó algo encolado de
+        // una sesión offline anterior (o de una caída de STOMP en esta misma
+        // sesión, gracias al reconnectDelay del cliente) y lo sincroniza primero
+        // -- ver useOfflineSync.ts. `connectNow` es exactamente lo que este
+        // callback hacía antes de que existiera la cola offline: conectar el
+        // transport real y unirse a la sala de presencia.
+        void handleReconnect(diagramId, token, () => {
+          connectTransport({
+            send: (operationType, targetId, payload) =>
+              diagramStompClient.sendMutation(operationType, targetId, userId, payload),
+            acquireLock: (targetId) => diagramStompClient.acquireLock(targetId, userId),
+            releaseLock: (targetId) => diagramStompClient.releaseLock(targetId, userId),
+          })
+          // Presencia (RF-04.3): alta en la sala del diagrama para que los demás
+          // colaboradores nos vean (cursor, nombre, color) y para que LOCK_ACQUIRED
+          // pueda resolver nuestro userName/color reales en vez del genérico
+          // "Usuario"/#999999 (ver RoomManager.findMember en el backend).
+          setCurrentUserId(userId)
+          diagramStompClient.joinPresence(diagramId, userId, fullName ?? 'Usuario', colorForUser(userId))
         })
-
-        // Guard crítico: una ejecución ya cancelada por StrictMode NUNCA debe
-        // tocar el cliente STOMP singleton (ver comentario arriba del efecto).
+      },
+      onDisconnected: () => {
         if (cancelled) return
-
-        // 2) Recién ahora se conecta el STOMP client para recibir mutaciones futuras.
-        diagramStompClient.connect(diagramId, token as string, {
-          onConnected: () => {
-            if (cancelled) return
-            // Antes de pasar a 'online' de verdad, revisa si quedó algo encolado de
-            // una sesión offline anterior (o de una caída de STOMP en esta misma
-            // sesión, gracias al reconnectDelay del cliente) y lo sincroniza primero
-            // -- ver useOfflineSync.ts. `connectNow` es exactamente lo que este
-            // callback hacía antes de que existiera la cola offline: conectar el
-            // transport real y unirse a la sala de presencia.
-            void handleReconnect(diagramId, token as string, () => {
-              connectTransport({
-                send: (operationType, targetId, payload) =>
-                  diagramStompClient.sendMutation(operationType, targetId, userId as string, payload),
-                acquireLock: (targetId) => diagramStompClient.acquireLock(targetId, userId as string),
-                releaseLock: (targetId) => diagramStompClient.releaseLock(targetId, userId as string),
-              })
-              // Presencia (RF-04.3): alta en la sala del diagrama para que los demás
-              // colaboradores nos vean (cursor, nombre, color) y para que LOCK_ACQUIRED
-              // pueda resolver nuestro userName/color reales en vez del genérico
-              // "Usuario"/#999999 (ver RoomManager.findMember en el backend).
-              setCurrentUserId(userId as string)
-              diagramStompClient.joinPresence(diagramId, userId as string, fullName ?? 'Usuario', colorForUser(userId as string))
-            })
-          },
-          onDisconnected: () => {
-            if (cancelled) return
-            updateConnectionStatus('offline')
-            disconnectTransport()
-          },
-          onError: (message) => {
-            console.error('Error STOMP:', message)
-          },
-          onServerError: (message) => {
-            console.error('El backend rechazó la última mutación:', message)
-          },
-          onBroadcast: applyBroadcast,
-          onPresence: applyPresenceMessage,
-          onLockChange: (info) =>
-            'released' in info ? clearLock(info.targetId) : setLock(info.targetId, info.userId, info.userName, info.color),
-        })
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        console.error('No se pudo inicializar el diagrama activo', err)
-        if (!cancelled) updateConnectionStatus('offline')
-      }
-    }
-
-    init()
+        updateConnectionStatus('offline')
+        disconnectTransport()
+      },
+      onError: (message) => {
+        console.error('Error STOMP:', message)
+      },
+      onServerError: (message) => {
+        console.error('El backend rechazó la última mutación:', message)
+      },
+      onBroadcast: applyBroadcast,
+      onPresence: applyPresenceMessage,
+      onLockChange: (info) =>
+        'released' in info ? clearLock(info.targetId) : setLock(info.targetId, info.userId, info.userName, info.color),
+    })
 
     return () => {
       cancelled = true
-      controller.abort()
       diagramStompClient.disconnect()
       disconnectTransport()
-      diagramIdRef.current = null
-      projectIdRef.current = null
       setStoreDiagramId(null)
     }
   }, [
     token,
     userId,
     fullName,
+    diagramId,
+    initialSnapshot,
     connectTransport,
     disconnectTransport,
     applyBroadcast,
@@ -298,13 +298,28 @@ function DiagramWorkspace() {
     setArmedRelationshipType((current) => (current === type ? null : type))
   }
 
+  // Crear un proyecto adicional desde DENTRO del lienzo (dropdown "Proyecto")
+  // ahora también lo activa de inmediato -- requiere resolver su diagrama (ver
+  // resolveDiagramForProject) antes de poder avisarle a ProjectGate, así que
+  // acá sí puede fallar (proyecto creado bien, pero sin poder listar/crear su
+  // diagrama) de forma independiente del propio CreateProjectModal.
+  async function handleProjectCreatedInToolbar(project: ProjectResponse) {
+    if (!token || !userId) return
+    setProjectActivationError(null)
+    try {
+      const result = await resolveDiagramForProject(token, userId, project.id)
+      onProjectActivated(result)
+    } catch (err) {
+      setProjectActivationError(err instanceof Error ? err.message : 'No se pudo abrir el proyecto recién creado')
+    }
+  }
+
   // Cursor remoto (RF-04.3): reenvía la posición del mouse sobre el lienzo a los
   // demás colaboradores, throttleado a ~15 envíos/seg para no saturar la red.
   const CURSOR_THROTTLE_MS = 65
   function handlePaneMouseMove(event: React.MouseEvent) {
-    const diagramId = diagramIdRef.current
     const instance = reactFlowInstanceRef.current
-    if (!diagramId || !instance || !userId) return
+    if (!instance || !userId) return
 
     const now = Date.now()
     if (now - lastCursorSendRef.current < CURSOR_THROTTLE_MS) return
@@ -378,10 +393,14 @@ function DiagramWorkspace() {
             agrupar (ver reorganización de la barra más abajo). */}
         <div className="diagram-toolbar__group" role="group" aria-label="Vista y comandos de IA">
           <ViewModeToggle />
-          <VoiceToolbar diagramId={storeDiagramId} />
+          <VoiceToolbar diagramId={diagramId} />
         </div>
 
         <div className="diagram-toolbar__spacer" />
+
+        <button type="button" className="diagram-toolbar__icon-btn" title="Volver a la lista de proyectos" onClick={onBackToSelector}>
+          <span aria-hidden>📂</span> Mis proyectos
+        </button>
 
         {/* Uso ocasional: agrupados detrás de menús desplegables (antes eran 7
             botones sueltos entre estos dos grupos + VisionModal, y la barra ya
@@ -389,17 +408,17 @@ function DiagramWorkspace() {
             ToolbarDropdown y el flex-wrap de .diagram-toolbar como red de
             seguridad adicional). */}
         <ToolbarDropdown icon="📁" label="Proyecto" ariaLabel="Menú de gestión de proyecto">
-          <CreateProjectModal />
-          <InviteMemberModal projectId={projectIdRef.current} />
-          <DeleteProjectButton projectId={projectIdRef.current} />
+          <CreateProjectModal onCreated={handleProjectCreatedInToolbar} />
+          <InviteMemberModal projectId={projectId} />
+          <DeleteProjectButton projectId={projectId} onDeleted={onBackToSelector} />
+          {projectActivationError && <span className="diagram-toolbar__tooltip">{projectActivationError}</span>}
         </ToolbarDropdown>
 
         <ToolbarDropdown icon="⚙️" label="Generar / Exportar" ariaLabel="Menú de generación e interoperabilidad">
-          <GenerateBackendButton diagramId={storeDiagramId} />
-          <GenerateMobileAppButton diagramId={storeDiagramId} />
-          <ExportXmiButton diagramId={storeDiagramId} />
-          <ImportXmiButton projectId={projectIdRef.current} />
-          <VisionModal diagramId={storeDiagramId} />
+          <GenerateBackendButton diagramId={diagramId} />
+          <ExportXmiButton diagramId={diagramId} />
+          <ImportXmiButton projectId={projectId} />
+          <VisionModal diagramId={diagramId} />
         </ToolbarDropdown>
 
         <button type="button" className="diagram-toolbar__logout" onClick={logout}>
@@ -435,9 +454,91 @@ function DiagramWorkspace() {
   )
 }
 
+/**
+ * Reemplaza a la vieja `ensureActiveDiagram` como punto único de "qué proyecto
+ * abrir" -- antes esa función lo decidía sola (caché o `projects[0]`) sin darle
+ * al usuario ninguna opción real; ahora esa decisión es siempre explícita (ver
+ * ProjectSelector) o el último proyecto que el usuario mismo activó en este
+ * navegador (validado de nuevo antes de confiar en él, por si mientras tanto
+ * perdió acceso o el proyecto se borró).
+ */
+function ProjectGate() {
+  const token = useAuthStore((state) => state.token)
+  const userId = useAuthStore((state) => state.userId)
+
+  const [phase, setPhase] = useState<'checking' | 'selector' | 'workspace'>('checking')
+  const [active, setActive] = useState<ActiveDiagramResult | null>(null)
+
+  useEffect(() => {
+    if (!token || !userId) return
+    let cancelled = false
+    const controller = new AbortController()
+
+    async function check() {
+      try {
+        const cached = await tryResolveCachedActiveDiagram(token as string, userId as string, controller.signal)
+        if (cancelled) return
+        if (cached) {
+          setActive(cached)
+          setPhase('workspace')
+        } else {
+          setPhase('selector')
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (!cancelled) setPhase('selector')
+      }
+    }
+
+    check()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [token, userId])
+
+  function handleActivated(result: ActiveDiagramResult) {
+    setActive(result)
+    setPhase('workspace')
+  }
+
+  function handleBackToSelector() {
+    setActive(null)
+    setPhase('selector')
+  }
+
+  if (phase === 'checking') {
+    return (
+      <div className="project-gate-loading">
+        <p>Cargando tu espacio de trabajo…</p>
+      </div>
+    )
+  }
+
+  if (phase === 'workspace' && active) {
+    return (
+      <DiagramWorkspace
+        // Fuerza un remonte limpio al cambiar de proyecto/diagrama -- reutiliza
+        // tal cual toda la lógica de conexión/limpieza que ya tenía el efecto
+        // principal (STOMP connect/disconnect, hydrate) en vez de agregarle
+        // manejo de "cambiar de diagramId en caliente" a ese efecto ya delicado
+        // (ver los comentarios de StrictMode ahí mismo).
+        key={active.diagramId}
+        projectId={active.projectId}
+        diagramId={active.diagramId}
+        initialSnapshot={active.snapshot}
+        onBackToSelector={handleBackToSelector}
+        onProjectActivated={handleActivated}
+      />
+    )
+  }
+
+  return <ProjectSelector onActivated={handleActivated} />
+}
+
 function App() {
   const token = useAuthStore((state) => state.token)
-  return token ? <DiagramWorkspace /> : <LoginScreen />
+  return token ? <ProjectGate /> : <LoginScreen />
 }
 
 export default App

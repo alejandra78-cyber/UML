@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { authFetch } from '../collaboration/diagramBootstrap'
+import { authFetch, clearCachedActiveProject } from '../collaboration/diagramBootstrap'
 import { useAuthStore } from '../auth/useAuthStore'
 
 // Gestión de Proyecto — UC19 (Eliminar Proyecto). Conectado de verdad: el
@@ -7,18 +7,31 @@ import { useAuthStore } from '../auth/useAuthStore'
 // miembros, diagramas, historial de operaciones), así que se confirma antes con
 // window.confirm dejando explícito que es irreversible y qué se pierde -- no
 // hace falta un modal de confirmación custom para esto.
+//
+// Caso borde conocido y aceptado por ahora (no lo resuelve este componente): el
+// cascade delete del backend no notifica a conexiones STOMP de OTROS usuarios
+// que puedan seguir con el proyecto abierto en su propia pestaña -- solo la
+// sesión que ejecuta el borrado se entera y redirige, vía `onDeleted`.
+//
+// Después de un borrado exitoso ya NO alcanza con un window.alert: el proyecto
+// activo cacheado en localStorage (ver diagramBootstrap.ts) apuntaría a un
+// proyecto/diagrama que el backend acaba de destruir, así que se limpia acá
+// mismo, y `onDeleted` es responsabilidad del padre (ProjectGate) para volver
+// al selector de proyectos.
 
 interface DeleteProjectButtonProps {
   projectId: string | null
+  onDeleted: () => void
 }
 
-export function DeleteProjectButton({ projectId }: DeleteProjectButtonProps) {
+export function DeleteProjectButton({ projectId, onDeleted }: DeleteProjectButtonProps) {
   const token = useAuthStore((state) => state.token)
+  const userId = useAuthStore((state) => state.userId)
   const [busy, setBusy] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   async function handleClick() {
-    if (!token || !projectId) return
+    if (!token || !userId || !projectId) return
     const confirmed = window.confirm(
       'Esto elimina el proyecto de forma DEFINITIVA e IRREVERSIBLE, junto con todos sus miembros, ' +
         'diagramas y el historial de operaciones asociado. ¿Confirmás que querés eliminarlo?',
@@ -35,7 +48,8 @@ export function DeleteProjectButton({ projectId }: DeleteProjectButtonProps) {
         )
         return
       }
-      window.alert('Proyecto eliminado.')
+      clearCachedActiveProject(userId)
+      onDeleted()
     } catch {
       setErrorMessage('No se pudo contactar al backend en http://localhost:8080')
     } finally {

@@ -25,10 +25,32 @@ public class RelationshipFieldView {
     private final String joinColumnOwn;
     private final String joinColumnOther;
     private final boolean nullable;
+    private final String targetIdType;
+    private final String targetIdGetterName;
 
+    /**
+     * {@code targetIdType}/{@code targetIdGetterName}: tipo Java y nombre del getter
+     * del id "efectivo" de {@code targetClassName} (ver
+     * {@code GeneratorModelBuilder.resolveEffectivePrimaryKeyAttribute}) -- solo
+     * relevantes para {@link #isOwningSingleValued()} (los DTO exponen
+     * {@code <fieldName>Id} con {@code targetIdType}, y {@code Mapper.java.ftl} llama
+     * a {@code targetIdGetterName} sobre la entidad relacionada). {@code null} para
+     * el resto de los {@code Kind} (no exponen un id de FK propio en el DTO/Mapper).
+     *
+     * <p>Bugs reales encontrados generando y COMPILANDO un backend real (diagrama
+     * veterinaria, clases con PK declarada explícitamente con un tipo/nombre no
+     * default): (1) el DTO exponía siempre {@code Long} para el id de FK sin importar
+     * el tipo real de la PK referenciada ({@code findById(Long)} contra un
+     * repositorio {@code JpaRepository<Veterinario, Integer>}); (2) el Mapper
+     * generado llamaba siempre a {@code getId()} sobre la entidad relacionada, pero
+     * una PK declarada con otro nombre (p.ej. "idCliente") genera el getter
+     * {@code getIdCliente()}, no {@code getId()} -- "cannot find symbol: method
+     * getId()".</p>
+     */
     public RelationshipFieldView(Kind kind, String fieldName, String targetClassName, String joinColumnName,
                                   String mappedBy, String joinTableName, String joinColumnOwn,
-                                  String joinColumnOther, boolean nullable) {
+                                  String joinColumnOther, boolean nullable, String targetIdType,
+                                  String targetIdGetterName) {
         this.kind = kind;
         this.fieldName = fieldName;
         this.targetClassName = targetClassName;
@@ -38,6 +60,8 @@ public class RelationshipFieldView {
         this.joinColumnOwn = joinColumnOwn;
         this.joinColumnOther = joinColumnOther;
         this.nullable = nullable;
+        this.targetIdType = targetIdType;
+        this.targetIdGetterName = targetIdGetterName;
     }
 
     public String getKind() {
@@ -83,6 +107,14 @@ public class RelationshipFieldView {
 
     public boolean isNullable() {
         return nullable;
+    }
+
+    public String getTargetIdType() {
+        return targetIdType;
+    }
+
+    public String getTargetIdGetterName() {
+        return targetIdGetterName;
     }
 
     /** Nombre de campo capitalizado, para getters/setters generados ({@code getCliente}, {@code setClienteId}). */

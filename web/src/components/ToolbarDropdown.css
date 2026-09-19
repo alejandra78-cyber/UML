@@ -20,18 +20,30 @@
   color-scheme: light;
   position: absolute;
   top: calc(100% + 4px);
+  /* Valor por defecto para el primer frame antes de que ToolbarDropdown.tsx
+     mida y aplique un `left` inline corregido (ver ese archivo) -- asume que
+     el botón está cerca del borde derecho, que es el caso más común pero deja
+     de serlo si `flex-wrap` envuelve el botón cerca del borde izquierdo en
+     ventana angosta. El `left` inline pisa esto en cuanto se mide. */
   right: 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 210px;
+  /* Red de seguridad adicional: aunque el JS de reposicionamiento clampee el
+     `left`, un panel más ancho que el viewport mismo (pantallas extremas)
+     seguiría sin entrar -- este max-width garantiza que el panel SIEMPRE
+     pueda entrar dentro del viewport con margen, sin importar cuánto
+     contenido interno tenga. */
+  max-width: calc(100vw - 16px);
   background: #fff;
   color: #1a1a1a;
   border: 1px solid #ccc;
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 8px;
+  box-sizing: border-box;
 }
 
 /* Los componentes agrupados acá (GenerateBackendButton, VisionModal, etc.)

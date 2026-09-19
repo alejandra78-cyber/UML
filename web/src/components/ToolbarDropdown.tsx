@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import './ToolbarDropdown.css'
+
+// Margen mínimo respetado contra cada borde del viewport al reposicionar el
+// panel (ver el efecto de reposicionamiento más abajo).
+const VIEWPORT_MARGIN_PX = 8
 
 // Agrupa controles de uso OCASIONAL detrás de un menú desplegable, para que la
 // barra superior no siga creciendo linealmente con cada caso de uso nuevo que se
@@ -23,6 +27,11 @@ interface ToolbarDropdownProps {
 export function ToolbarDropdown({ icon, label, ariaLabel, children }: ToolbarDropdownProps) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  // `null` = todavía sin medir (primer render tras abrir): se apoya en el
+  // `right: 0` por defecto de ToolbarDropdown.css hasta que el efecto de abajo
+  // mide y corrige, así nunca hay un frame con el panel sin posicionar.
+  const [panelLeft, setPanelLeft] = useState<number | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -33,6 +42,43 @@ export function ToolbarDropdown({ icon, label, ariaLabel, children }: ToolbarDro
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [open])
+
+  // BUG reportado con captura real: en ventana angosta, `flex-wrap` en la barra
+  // superior puede envolver este botón cerca del borde IZQUIERDO del viewport
+  // (no siempre cerca del derecho, que es lo único que el `right: 0` fijo de la
+  // hoja de estilos asumía). Un panel que crece hacia la izquierda desde un
+  // botón ya pegado a la izquierda termina con coordenadas negativas --
+  // literalmente fuera de la ventana (confirmado con Playwright: x: -97px en
+  // un viewport de 700px, cortando "Generar backend" a solo "ackend" visible).
+  // Se mide la posición real del botón/panel ya renderizado y se calcula un
+  // `left` (en vez de depender de `right`) clampeado para que el panel entero
+  // quede siempre dentro del viewport, con un margen mínimo a cada lado.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelLeft(null)
+      return
+    }
+
+    function reposition() {
+      if (!containerRef.current || !panelRef.current) return
+      const containerRect = containerRef.current.getBoundingClientRect()
+      const panelWidth = panelRef.current.offsetWidth
+      // Anclaje "natural" -- equivalente a right:0: el borde derecho del panel
+      // coincide con el borde derecho del botón.
+      const naturalLeft = containerRect.width - panelWidth
+      const idealLeftInViewport = containerRect.left + naturalLeft
+      const minLeftInViewport = VIEWPORT_MARGIN_PX
+      const maxLeftInViewport = window.innerWidth - panelWidth - VIEWPORT_MARGIN_PX
+      const clampedLeftInViewport = Math.min(Math.max(idealLeftInViewport, minLeftInViewport), maxLeftInViewport)
+      // Vuelve a coordenadas LOCALES (relativas al contenedor position:relative,
+      // que es lo que espera el `left` inline del panel position:absolute).
+      setPanelLeft(clampedLeftInViewport - containerRect.left)
+    }
+
+    reposition()
+    window.addEventListener('resize', reposition)
+    return () => window.removeEventListener('resize', reposition)
   }, [open])
 
   return (
@@ -51,7 +97,12 @@ export function ToolbarDropdown({ icon, label, ariaLabel, children }: ToolbarDro
         </span>
       </button>
       {open && (
-        <div className="toolbar-dropdown__panel" role="menu">
+        <div
+          ref={panelRef}
+          className="toolbar-dropdown__panel"
+          role="menu"
+          style={panelLeft !== null ? { left: panelLeft, right: 'auto' } : undefined}
+        >
           {children}
         </div>
       )}

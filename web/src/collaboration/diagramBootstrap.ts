@@ -1,15 +1,15 @@
-// Resuelve qué proyecto/diagrama usar (sección 14) sin todavía tener una UI de
-// selección de proyectos: reutiliza lo cacheado en localStorage por usuario si
-// sigue siendo válido, o si no, reutiliza el primer proyecto accesible (o crea
-// uno) y reutiliza el primer diagrama existente de ese proyecto (o crea uno si
-// no hay ninguno). Reutilizar el diagrama existente -- no solo el proyecto -- es
-// necesario para que varios usuarios que comparten un proyecto (p.ej. para
-// probar colaboración) terminen viendo y editando el MISMO diagrama en vez de
-// que cada uno cree el suyo la primera vez que entra.
+// Resuelve qué proyecto/diagrama usar. Ya NO adivina el proyecto por su cuenta
+// (ver ProjectSelector.tsx) -- la elección de proyecto es siempre explícita del
+// usuario (o el último que activó, cacheado en localStorage). Lo que sigue
+// resolviéndose automáticamente acá es el DIAGRAMA dentro de un proyecto ya
+// elegido: se reutiliza el primer diagrama existente (o se crea uno si no hay
+// ninguno), necesario para que varios usuarios que comparten un proyecto
+// (p.ej. para probar colaboración) terminen viendo y editando el MISMO
+// diagrama en vez de que cada uno cree el suyo la primera vez que entra.
 
 export const API_BASE = 'http://localhost:8080/api/v1'
 
-interface ProjectResponse {
+export interface ProjectResponse {
   id: string
   name: string
   description: string | null
@@ -37,7 +37,8 @@ export interface ActiveDiagram {
 }
 
 export interface ActiveDiagramResult extends ActiveDiagram {
-  /** Snapshot ya resuelto durante la búsqueda del diagrama activo (ver `ensureActiveDiagram`). */
+  /** Snapshot ya resuelto durante la búsqueda del diagrama activo (ver
+   * `tryResolveCachedActiveDiagram`/`resolveDiagramForProject`). */
   snapshot: SnapshotResponse
 }
 
@@ -71,6 +72,13 @@ function clearCached(userId: string): void {
   }
 }
 
+/** Wrapper público de `clearCached` -- usado por DeleteProjectButton tras un
+ * borrado exitoso, para que un próximo login no intente reabrir un proyecto
+ * que el usuario mismo acaba de eliminar. */
+export function clearCachedActiveProject(userId: string): void {
+  clearCached(userId)
+}
+
 export async function authFetch(token: string, path: string, init?: RequestInit, signal?: AbortSignal): Promise<Response> {
   return fetch(`${API_BASE}${path}`, {
     ...init,
@@ -83,16 +91,16 @@ export async function authFetch(token: string, path: string, init?: RequestInit,
   })
 }
 
-async function listProjects(token: string, signal?: AbortSignal): Promise<ProjectResponse[]> {
+export async function listProjects(token: string, signal?: AbortSignal): Promise<ProjectResponse[]> {
   const res = await authFetch(token, '/projects', undefined, signal)
   if (!res.ok) throw new Error(`No se pudo listar proyectos (${res.status})`)
   return res.json()
 }
 
-async function createProject(
+export async function createProject(
   token: string,
   name: string,
-  description: string,
+  description: string | null,
   signal?: AbortSignal,
 ): Promise<ProjectResponse> {
   const res = await authFetch(token, '/projects', { method: 'POST', body: JSON.stringify({ name, description }) }, signal)
@@ -119,41 +127,59 @@ export async function fetchSnapshot(token: string, diagramId: string, signal?: A
 }
 
 /**
- * Resuelve el proyecto/diagrama activo Y su snapshot en, como máximo, una sola
- * llamada de red a /snapshot (antes se pedía dos veces: una para "validar" el
- * caché y otra en App.tsx para cargar los datos). Si hay que crear un diagrama
- * nuevo, ni siquiera hace falta esa llamada: un diagrama recién creado siempre
- * arranca vacío (ver `DiagramController.createDiagram`), así que se construye
- * el snapshot vacío localmente.
+ * Intenta reutilizar el proyecto/diagrama que este usuario activó explícitamente
+ * la última vez en este navegador (ver ProjectSelector.tsx -- es el único lugar
+ * que ahora decide QUÉ proyecto abrir). Devuelve `null` si no hay nada cacheado
+ * o si el diagrama cacheado ya no existe / el usuario perdió acceso (p.ej. lo
+ * sacaron del proyecto, o el proyecto se borró) -- en ese caso limpia el caché y
+ * deja que el llamador decida qué mostrar (el selector), en vez de adivinar un
+ * proyecto por su cuenta como hacía la vieja `ensureActiveDiagram`.
  */
-export async function ensureActiveDiagram(token: string, userId: string, signal?: AbortSignal): Promise<ActiveDiagramResult> {
+export async function tryResolveCachedActiveDiagram(
+  token: string,
+  userId: string,
+  signal?: AbortSignal,
+): Promise<ActiveDiagramResult | null> {
   const cached = readCached(userId)
-  if (cached) {
-    try {
-      const snapshot = await fetchSnapshot(token, cached.diagramId, signal)
-      return { ...cached, snapshot }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') throw err
-      // El diagrama cacheado ya no existe o el usuario perdió acceso: se recrea.
-      clearCached(userId)
-    }
+  if (!cached) return null
+
+  try {
+    const snapshot = await fetchSnapshot(token, cached.diagramId, signal)
+    return { ...cached, snapshot }
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw err
+    clearCached(userId)
+    return null
   }
+}
 
-  const projects = await listProjects(token, signal)
-  const project = projects[0] ?? (await createProject(token, 'Proyecto de prueba', 'Creado automáticamente por el diagramador', signal))
-
-  const existingDiagrams = await listDiagrams(token, project.id, signal)
+/**
+ * Dado un proyecto YA elegido por el usuario (selector, o recién creado),
+ * resuelve qué diagrama abrir dentro de él: reutiliza el primero existente (para
+ * que varios usuarios que entran al mismo proyecto vean el mismo diagrama) o crea
+ * uno si no hay ninguno. Si hay que crear uno, ni siquiera hace falta pedir el
+ * snapshot: un diagrama recién creado siempre arranca vacío (ver
+ * `DiagramController.createDiagram`), así que se construye el snapshot vacío
+ * localmente. Guarda el resultado como el proyecto activo del usuario.
+ */
+export async function resolveDiagramForProject(
+  token: string,
+  userId: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<ActiveDiagramResult> {
+  const existingDiagrams = await listDiagrams(token, projectId, signal)
   const existingDiagram = existingDiagrams[0]
 
   if (existingDiagram) {
-    const active: ActiveDiagram = { projectId: project.id, diagramId: existingDiagram.id }
+    const active: ActiveDiagram = { projectId, diagramId: existingDiagram.id }
     writeCached(userId, active)
     const snapshot = await fetchSnapshot(token, existingDiagram.id, signal)
     return { ...active, snapshot }
   }
 
-  const diagram = await createDiagram(token, project.id, 'Diagrama de prueba', signal)
-  const active: ActiveDiagram = { projectId: project.id, diagramId: diagram.id }
+  const diagram = await createDiagram(token, projectId, 'Diagrama de prueba', signal)
+  const active: ActiveDiagram = { projectId, diagramId: diagram.id }
   writeCached(userId, active)
 
   const emptySnapshot: SnapshotResponse = {

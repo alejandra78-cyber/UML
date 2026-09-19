@@ -5,6 +5,23 @@
   width: 100vw;
 }
 
+/* Fase "checking" de ProjectGate: se muestra mientras se valida si el proyecto
+   cacheado en localStorage sigue siendo válido (fetch a /snapshot), antes de
+   decidir entre el selector de proyectos y el lienzo. Clara siempre, mismo
+   motivo que ProjectSelector.css/ProjectModals.css (ver ahí el detalle del bug
+   de contraste en modo oscuro que este patrón evita desde el arranque). */
+.project-gate-loading {
+  color-scheme: light;
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f2f4f7;
+  color: #666;
+  font-size: 14px;
+}
+
 .diagram-toolbar {
   display: flex;
   flex-wrap: wrap;

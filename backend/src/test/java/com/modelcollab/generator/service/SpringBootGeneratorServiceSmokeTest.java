@@ -217,9 +217,27 @@ class SpringBootGeneratorServiceSmokeTest {
         ClassEntity mascota = classOf("Mascota",
                 attr("nombre", AttributeType.VARCHAR, false),
                 attr("especie", AttributeType.VARCHAR, false));
-        ClassEntity veterinario = classOf("Veterinario",
-                attr("nombre", AttributeType.VARCHAR, false),
-                attr("matricula", AttributeType.VARCHAR, true));
+        // PK declarada explicitamente como INTEGER y con un NOMBRE no default (no "id"):
+        // asi se reprodujeron dos bugs reales con este mismo dominio -- (1) el
+        // RequestDTO/ResponseDTO del lado dueno de la relacion (Cita->Veterinario)
+        // exponia "veterinarioId" siempre como Long sin importar el tipo real de la PK
+        // referenciada (findById(Long) contra JpaRepository<Veterinario, Integer>); y
+        // (2) el Mapper generado llamaba siempre a entity.getId() sobre la entidad
+        // relacionada, pero con la PK llamada "idVeterinario" el getter real generado
+        // es getIdVeterinario(), no getId() ("cannot find symbol: method getId()").
+        // Ver los fixes en GeneratorModelBuilder/RelationshipFieldView (targetIdType,
+        // targetIdGetterName) y en Mapper.java.ftl.
+        ClassEntity veterinario = ClassEntity.builder()
+                .id(UUID.randomUUID())
+                .name("Veterinario")
+                .visibility(Visibility.PUBLIC)
+                .position(new Position(0, 0))
+                .attributes(List.of(
+                        Attribute.builder().id(UUID.randomUUID()).name("idVeterinario").type(AttributeType.INTEGER)
+                                .visibility(Visibility.PRIVATE).primaryKey(true).nullable(false).build(),
+                        attr("nombre", AttributeType.VARCHAR, false),
+                        attr("matricula", AttributeType.VARCHAR, true)))
+                .build();
         ClassEntity cita = classOf("Cita",
                 attr("fecha", AttributeType.DATE, false),
                 attr("motivo", AttributeType.TEXT, true));

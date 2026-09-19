@@ -9,10 +9,6 @@ import ${basePackage}.service.dto.${cls.responseDtoName};
  * dueñas ({@code @ManyToOne}/{@code @OneToOne}) NO se resuelven aquí: el service
  * las resuelve a partir del id recibido en el request DTO (ver '${cls.serviceImplName}'),
  * para no acoplar este mapper a los repositorios de las clases relacionadas.
- *
- * <p>Simplificación deliberada: {@code toResponse} asume que el identificador del
- * lado relacionado se expone como {@code getId()} (cierto para toda PK inyectada
- * automáticamente, y para cualquier PK manual literalmente llamada "id").</p>
  */
 public class ${cls.mapperName} {
 
@@ -37,7 +33,7 @@ public class ${cls.mapperName} {
                 entity.${f.getterName}()<#if f_has_next || (cls.owningSingleValuedRelationships?size > 0)>,</#if>
 </#list>
 <#list cls.owningSingleValuedRelationships as rf>
-                (entity.get${rf.capitalizedFieldName}() == null ? null : entity.get${rf.capitalizedFieldName}().getId())<#if rf_has_next>,</#if>
+                (entity.get${rf.capitalizedFieldName}() == null ? null : entity.get${rf.capitalizedFieldName}().${rf.targetIdGetterName}())<#if rf_has_next>,</#if>
 </#list>
         );
     }

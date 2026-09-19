@@ -1,56 +1,108 @@
+/* Identidad visual coherente con el resto de la app: el celeste de los handles
+   de conexión/edges (#38bdf8, ver App.css) y el azul de los botones primarios
+   ya establecidos (login/"Entrar" del selector de proyectos, #2f5fdb) -- NO el
+   --accent violeta de index.css, que es un resto del template de Vite sin usar
+   en ningún componente real (confirmado por grep). Deliberadamente siempre
+   clara, mismo motivo que ProjectSelector.css/ProjectModals.css: sin
+   `color-scheme: light` explícito, esta tarjeta blanca heredaría las variables
+   --text/--text-h ya oscurecidas de index.css con el SO en modo oscuro. */
 .login-screen {
+  color-scheme: light;
   height: 100vh;
   width: 100vw;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f2f4f7;
+  background: linear-gradient(135deg, #eaf6fe 0%, #f2f4f7 45%, #e8edfc 100%);
 }
 
 .login-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: 320px;
-  padding: 32px;
+  align-items: stretch;
+  gap: 14px;
+  width: 340px;
+  padding: 40px 36px;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  color: #1a1a1a;
+  border-radius: 14px;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.06),
+    0 20px 40px -12px rgba(47, 95, 219, 0.18);
+}
+
+.login-card__brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
 }
 
 .login-card h1 {
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
   margin: 0 0 4px;
+  color: #1a1a1a;
 }
 
 .login-subtitle {
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   font-size: 13px;
-  color: #666;
+  text-align: center;
+  color: #6b7280;
 }
 
 .login-card label {
   font-size: 12px;
-  color: #444;
-  margin-top: 8px;
+  font-weight: 600;
+  color: #374151;
+  margin-top: 10px;
 }
 
 .login-card input {
-  padding: 8px 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1.5px solid #d7dbe3;
+  border-radius: 8px;
   font-size: 14px;
+  color: #1a1a1a;
+  background: #fff;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.login-card input::placeholder {
+  color: #9ca3af;
+}
+
+.login-card input:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
 }
 
 .login-card button {
-  margin-top: 18px;
-  padding: 10px;
-  border-radius: 4px;
+  margin-top: 22px;
+  padding: 11px;
+  border-radius: 8px;
   border: none;
   background: #2f5fdb;
   color: #fff;
   font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
+  transition:
+    background 0.12s ease,
+    transform 0.05s ease;
+}
+
+.login-card button:hover:not(:disabled) {
+  background: #2650bd;
+}
+
+.login-card button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .login-card button:disabled {
@@ -59,7 +111,38 @@
 }
 
 .login-error {
-  margin: 8px 0 0;
-  color: #c0392b;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fdecea;
+  color: #b91c1c;
   font-size: 12px;
+}
+
+/* `.login-card .login-toggle` (dos clases) a propósito, no `.login-toggle`
+   solo: `.login-card button` (clase+tag) tiene más especificidad que una sola
+   clase, así que un `.login-toggle` sin calificar perdía contra ese estilo de
+   botón primario -- el link de "¿No tenés cuenta?" salía con el mismo fondo
+   azul sólido que "Ingresar"/"Crear cuenta" en vez de verse como un link de
+   texto. Confirmado visualmente (no solo compilando). */
+.login-card .login-toggle {
+  margin-top: 14px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #2f5fdb;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  align-self: center;
+}
+
+.login-card .login-toggle:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.login-card .login-toggle:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

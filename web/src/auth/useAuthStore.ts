@@ -25,6 +25,7 @@ interface AuthState {
   status: 'idle' | 'loading' | 'error'
   error: string | null
   login: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string, fullName: string) => Promise<void>
   logout: () => void
 }
 
@@ -118,6 +119,43 @@ export const useAuthStore = create<AuthState>((set) => ({
         return
       }
 
+      const auth: AuthResponse = await response.json()
+      writeStoredSession(auth)
+      set({
+        token: auth.token,
+        userId: auth.userId,
+        email: auth.email,
+        fullName: auth.fullName,
+        status: 'idle',
+        error: null,
+      })
+    } catch {
+      set({ status: 'error', error: 'No se pudo contactar al backend en http://localhost:8080' })
+    }
+  },
+
+  register: async (email, password, fullName) => {
+    set({ status: 'loading', error: null })
+    try {
+      const response = await fetch(`${AUTH_BASE_URL}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, fullName }),
+      })
+
+      if (!response.ok) {
+        const message =
+          response.status === 409
+            ? 'Ese email ya está registrado'
+            : response.status === 400
+              ? 'Revisá los datos: email válido, contraseña de al menos 8 caracteres y nombre completo'
+              : `Error del servidor (${response.status})`
+        set({ status: 'error', error: message })
+        return
+      }
+
+      // /register devuelve el mismo shape que /login (token + datos del usuario)
+      // -- se loguea automaticamente, sin pasar por una pantalla intermedia.
       const auth: AuthResponse = await response.json()
       writeStoredSession(auth)
       set({

@@ -95,7 +95,7 @@ public class GeneratorModelBuilder {
             if (!classesById.containsKey(r.sourceClassId()) || !classesById.containsKey(r.targetClassId())) {
                 continue; // relación huérfana: MetamodelValidator ya la bloquea como ERROR antes de llegar aquí
             }
-            addRelationshipPlan(r, classJavaNames, relFieldsByClass, usedFieldNamesByClass);
+            addRelationshipPlan(r, classesById, parentOf, classJavaNames, relFieldsByClass, usedFieldNamesByClass);
         }
 
         // --- 4. Ensamblar un ClassView por cada ClassEntity. ---
@@ -106,7 +106,8 @@ public class GeneratorModelBuilder {
         return views;
     }
 
-    private void addRelationshipPlan(Relationship r, Map<UUID, String> classJavaNames,
+    private void addRelationshipPlan(Relationship r, Map<UUID, ClassEntity> classesById, Map<UUID, UUID> parentOf,
+                                      Map<UUID, String> classJavaNames,
                                       Map<UUID, List<RelationshipFieldView>> relFieldsByClass,
                                       Map<UUID, Set<String>> usedFieldNamesByClass) {
         UUID sourceId = r.sourceClassId();
@@ -140,9 +141,10 @@ public class GeneratorModelBuilder {
             boolean nullableFk = r.targetMultiplicity() == null || r.targetMultiplicity() == Multiplicity.ZERO_ONE
                     || r.targetMultiplicity() == Multiplicity.ZERO_MANY;
             relFieldsByClass.get(sourceId).add(new RelationshipFieldView(RelationshipFieldView.Kind.MANY_TO_ONE,
-                    fieldOnSource, targetClassName, joinColumn, null, null, null, null, nullableFk));
+                    fieldOnSource, targetClassName, joinColumn, null, null, null, null, nullableFk,
+                    idType(targetId, classesById, parentOf), idGetterName(targetId, classesById, parentOf)));
             relFieldsByClass.get(targetId).add(new RelationshipFieldView(RelationshipFieldView.Kind.ONE_TO_MANY,
-                    fieldOnTarget, sourceClassName, null, fieldOnSource, null, null, null, true));
+                    fieldOnTarget, sourceClassName, null, fieldOnSource, null, null, null, true, null, null));
         } else if (targetMany) {
             // Una fuente, muchos targets: fuente = OneToMany, target = ManyToOne (dueño).
             String fieldOnTarget = uniqueFieldName(usedFieldNamesByClass.get(targetId), fieldNameFor(r.targetRole(), sourceClassName, false));
@@ -151,9 +153,10 @@ public class GeneratorModelBuilder {
             boolean nullableFk = r.sourceMultiplicity() == null || r.sourceMultiplicity() == Multiplicity.ZERO_ONE
                     || r.sourceMultiplicity() == Multiplicity.ZERO_MANY;
             relFieldsByClass.get(targetId).add(new RelationshipFieldView(RelationshipFieldView.Kind.MANY_TO_ONE,
-                    fieldOnTarget, sourceClassName, joinColumn, null, null, null, null, nullableFk));
+                    fieldOnTarget, sourceClassName, joinColumn, null, null, null, null, nullableFk,
+                    idType(sourceId, classesById, parentOf), idGetterName(sourceId, classesById, parentOf)));
             relFieldsByClass.get(sourceId).add(new RelationshipFieldView(RelationshipFieldView.Kind.ONE_TO_MANY,
-                    fieldOnSource, targetClassName, null, fieldOnTarget, null, null, null, true));
+                    fieldOnSource, targetClassName, null, fieldOnTarget, null, null, null, true, null, null));
         } else {
             // 1..1 <-> 1..1 (o 0..1 <-> 0..1): OneToOne; el dueño lo decide owningSide (SOURCE por defecto).
             OwningSide owningSide = r.owningSide() == null ? OwningSide.SOURCE : r.owningSide();
@@ -169,10 +172,21 @@ public class GeneratorModelBuilder {
             String joinColumn = NameUtils.snakeCase(otherClassName) + "_id";
 
             relFieldsByClass.get(owningId).add(new RelationshipFieldView(RelationshipFieldView.Kind.ONE_TO_ONE_OWNING,
-                    fieldOnOwning, otherClassName, joinColumn, null, null, null, null, true));
+                    fieldOnOwning, otherClassName, joinColumn, null, null, null, null, true,
+                    idType(otherId, classesById, parentOf), idGetterName(otherId, classesById, parentOf)));
             relFieldsByClass.get(otherId).add(new RelationshipFieldView(RelationshipFieldView.Kind.ONE_TO_ONE_MAPPED,
-                    fieldOnOther, owningClassName, null, fieldOnOwning, null, null, null, true));
+                    fieldOnOther, owningClassName, null, fieldOnOwning, null, null, null, true, null, null));
         }
+    }
+
+    /** Atajo para {@link #resolveEffectivePrimaryKeyType} a partir del id de la clase (no la entidad ya resuelta). */
+    private String idType(UUID classId, Map<UUID, ClassEntity> classesById, Map<UUID, UUID> parentOf) {
+        return resolveEffectivePrimaryKeyType(classesById.get(classId), classesById, parentOf);
+    }
+
+    /** Atajo para {@link #resolveEffectivePrimaryKeyGetterName} a partir del id de la clase. */
+    private String idGetterName(UUID classId, Map<UUID, ClassEntity> classesById, Map<UUID, UUID> parentOf) {
+        return resolveEffectivePrimaryKeyGetterName(classesById.get(classId), classesById, parentOf);
     }
 
     private void addManyToMany(Relationship r, UUID sourceId, UUID targetId, String sourceClassName,
@@ -196,9 +210,10 @@ public class GeneratorModelBuilder {
         String fieldOnOther = uniqueFieldName(usedFieldNamesByClass.get(otherId), fieldNameFor(roleForOther, owningClassName, true));
 
         relFieldsByClass.get(owningId).add(new RelationshipFieldView(RelationshipFieldView.Kind.MANY_TO_MANY_OWNING,
-                fieldOnOwning, otherClassName, null, null, joinTableName, joinColumnOwn, joinColumnOther, true));
+                fieldOnOwning, otherClassName, null, null, joinTableName, joinColumnOwn, joinColumnOther, true, null,
+                null));
         relFieldsByClass.get(otherId).add(new RelationshipFieldView(RelationshipFieldView.Kind.MANY_TO_MANY_MAPPED,
-                fieldOnOther, owningClassName, null, fieldOnOwning, joinTableName, null, null, true));
+                fieldOnOther, owningClassName, null, fieldOnOwning, joinTableName, null, null, true, null, null));
     }
 
     private static boolean isMany(Multiplicity multiplicity) {
@@ -282,7 +297,7 @@ public class GeneratorModelBuilder {
         }
         for (RelationshipFieldView rf : owningSingleValued) {
             List<String> annotations = rf.isNullable() ? List.of() : List.of("@NotNull");
-            requestDtoFields.add(new DtoFieldView("Long", rf.getFieldName() + "Id", annotations));
+            requestDtoFields.add(new DtoFieldView(rf.getTargetIdType(), rf.getFieldName() + "Id", annotations));
         }
 
         List<DtoFieldView> responseDtoFields = new ArrayList<>();
@@ -293,7 +308,7 @@ public class GeneratorModelBuilder {
             responseDtoFields.add(new DtoFieldView(f.getJavaType(), f.getJavaFieldName(), List.of()));
         }
         for (RelationshipFieldView rf : owningSingleValued) {
-            responseDtoFields.add(new DtoFieldView("Long", rf.getFieldName() + "Id", List.of()));
+            responseDtoFields.add(new DtoFieldView(rf.getTargetIdType(), rf.getFieldName() + "Id", List.of()));
         }
 
         return new ClassView(className, tableAnnotationLiteral, parentClassName, isInheritanceRoot,
@@ -302,12 +317,14 @@ public class GeneratorModelBuilder {
     }
 
     /**
-     * Tipo Java del id "efectivo" de una clase: el propio si no es hija, o el de la
-     * raíz de herencia (recorriendo {@code parentOf}) si lo es -- las hijas no
-     * declaran su propio {@code @Id} (ver {@link ClassView#isChild()}).
+     * {@code Attribute} de PK "efectiva" de una clase: la propia si no es hija, o la
+     * de la raíz de herencia (recorriendo {@code parentOf}) si lo es -- las hijas no
+     * declaran su propio {@code @Id} (ver {@link ClassView#isChild()}). {@code null}
+     * si ninguna PK está marcada explícitamente (invariante 2: se inyecta una PK
+     * {@code Long}/{@code "id"} automática, ver {@link #buildClassView}).
      */
-    private String resolveEffectivePrimaryKeyType(ClassEntity c, Map<UUID, ClassEntity> classesById,
-                                                    Map<UUID, UUID> parentOf) {
+    private Attribute resolveEffectivePrimaryKeyAttribute(ClassEntity c, Map<UUID, ClassEntity> classesById,
+                                                            Map<UUID, UUID> parentOf) {
         UUID rootId = c.id();
         Set<UUID> visited = new HashSet<>();
         while (parentOf.containsKey(rootId) && visited.add(rootId)) {
@@ -315,13 +332,36 @@ public class GeneratorModelBuilder {
         }
         ClassEntity root = classesById.get(rootId);
         if (root == null) {
-            return "Long";
+            return null;
         }
-        return root.attributes().stream()
-                .filter(Attribute::isPrimaryKey)
-                .findFirst()
-                .map(a -> javaType(a.type()))
-                .orElse("Long");
+        return root.attributes().stream().filter(Attribute::isPrimaryKey).findFirst().orElse(null);
+    }
+
+    /** Tipo Java del id "efectivo" de una clase, ver {@link #resolveEffectivePrimaryKeyAttribute}. */
+    private String resolveEffectivePrimaryKeyType(ClassEntity c, Map<UUID, ClassEntity> classesById,
+                                                    Map<UUID, UUID> parentOf) {
+        Attribute pk = resolveEffectivePrimaryKeyAttribute(c, classesById, parentOf);
+        return pk == null ? "Long" : javaType(pk.type());
+    }
+
+    /**
+     * Nombre del getter del id "efectivo" de una clase, ver
+     * {@link #resolveEffectivePrimaryKeyAttribute}. Bug real encontrado al generar y
+     * COMPILAR un backend real: los Mappers asumian {@code getId()} a ciegas para el
+     * lado relacionado de una FK, pero una PK declarada con un nombre distinto de
+     * "id" (p.ej. "idCliente") genera el campo/getter con ESE nombre
+     * ({@code getIdCliente()}, ver {@link #toFieldView}), no {@code getId()} --
+     * "cannot find symbol: method getId()" en el Mapper generado. Este metodo
+     * replica la MISMA sanitizacion/capitalizacion que {@link #toFieldView} usa para
+     * nombrar el campo, para que el getter que arma el Mapper siempre exista de
+     * verdad en la entidad generada.
+     */
+    private String resolveEffectivePrimaryKeyGetterName(ClassEntity c, Map<UUID, ClassEntity> classesById,
+                                                          Map<UUID, UUID> parentOf) {
+        Attribute pk = resolveEffectivePrimaryKeyAttribute(c, classesById, parentOf);
+        String fieldName = pk == null ? "id"
+                : identifierSanitizer.sanitizeJavaFieldName(NameUtils.camelCase(pk.name())).javaFieldName();
+        return "get" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
     }
 
     private static List<String> requestAnnotationsFor(FieldView f) {
