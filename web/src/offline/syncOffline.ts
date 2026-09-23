@@ -8,11 +8,22 @@ export interface SyncReport {
   discardedDetails: string[]
 }
 
-/** Forma exacta que espera el backend en POST /sync-offline (OfflineSyncRequest). */
+/** Forma exacta que espera el backend en POST /sync-offline (OfflineSyncRequest).
+ * `payload` es un STRING (JSON serializado), no un objeto anidado -- confirmado
+ * con el error real del backend la primera vez que esta cola se pobló de verdad
+ * (antes de agregar la detección de caída por evento 'offline'/'online', el
+ * offline queue nunca llegaba a poblarse en un corte de red real, así que este
+ * código nunca se había ejercitado contra el backend real):
+ * `Cannot deserialize value of type java.lang.String from Object value
+ * (token JsonToken.START_OBJECT)` en
+ * `OfflineSyncRequest["operations"]->[0]->PendingOperation["payload"]`. El
+ * campo `payload` del lado del backend es un `String` (blob JSON que el
+ * propio backend parsea después), no un objeto tipado en el DTO de entrada.
+ */
 interface SyncOfflineOperation {
   clientMutationId: string
   operationType: string
-  payload: Record<string, unknown>
+  payload: string
   clientTimestamp: number
 }
 
@@ -27,7 +38,9 @@ export async function syncOfflineQueue(diagramId: string, token: string, queue: 
   const operations: SyncOfflineOperation[] = queue.map((mutation) => ({
     clientMutationId: mutation.id,
     operationType: mutation.operationType,
-    payload: mutation.targetId !== null ? { ...mutation.payload, targetId: mutation.targetId } : mutation.payload,
+    payload: JSON.stringify(
+      mutation.targetId !== null ? { ...mutation.payload, targetId: mutation.targetId } : mutation.payload,
+    ),
     clientTimestamp: mutation.queuedAt,
   }))
 
@@ -36,7 +49,10 @@ export async function syncOfflineQueue(diagramId: string, token: string, queue: 
     body: JSON.stringify({ operations }),
   })
   if (!res.ok) {
-    throw new Error(`No se pudo sincronizar los cambios offline (${res.status})`)
+    // El backend puede mandar el detalle del error en el cuerpo -- se muestra
+    // tal cual si viene, en vez de un genérico sin información.
+    const detail = await res.text().catch(() => '')
+    throw new Error(detail ? `No se pudo sincronizar los cambios offline: ${detail}` : `No se pudo sincronizar los cambios offline (${res.status})`)
   }
   return res.json()
 }

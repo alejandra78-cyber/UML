@@ -1,0 +1,62 @@
+@startuml CU03_VisualizarTiempoReal
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU3. Visualizar diagrama en tiempo real
+
+actor Observador
+participant App <<View>>
+participant DiagramController <<Controller>>
+participant MetamodeloCanonico <<Model>>
+
+Observador -> App : 3. AbrirDiagrama(diagramId)
+activate App
+
+App -> DiagramController : 3.1 GET /api/v1/diagrams/{diagramId}/snapshot
+activate DiagramController
+
+DiagramController -> MetamodeloCanonico : 3.2 obtenerEstadoActual(diagramId)
+activate MetamodeloCanonico
+deactivate MetamodeloCanonico
+
+DiagramController --> App : 3.4 200 OK SnapshotResponse(currentState)
+deactivate DiagramController
+
+App -> App : 3.5 hydrate(model)
+App --> Observador : 3.6 Renderiza el diagrama en el lienzo
+deactivate App
+
+note over App, DiagramController
+  A partir de aquí, App queda suscrito a /topic/diagrams/{diagramId}
+  (canal STOMP). Cada mutación aplicada por otro colaborador se
+  difunde a esta suscripción vía el módulo de colaboración
+  (CollaborationStompController), representado aquí bajo el mismo
+  rol de "Controller" del diagrama.
+end note
+
+activate DiagramController
+DiagramController -> MetamodeloCanonico : 3.7 aplicarMutacion(tipo, targetId, payload) [de otro colaborador]
+activate MetamodeloCanonico
+deactivate MetamodeloCanonico
+
+DiagramController -> App : 3.9 StompBroadcastMessage(sequenceNum, tipo, targetId, payload)
+deactivate DiagramController
+activate App
+App -> App : 3.10 applyBroadcast(broadcast)
+App --> Observador : 3.11 Actualiza el lienzo en tiempo real
+deactivate App
+
+@enduml

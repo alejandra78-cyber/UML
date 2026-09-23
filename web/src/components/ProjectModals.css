@@ -90,6 +90,21 @@
   cursor: not-allowed;
 }
 
+/* Botón "Eliminar" de DeleteProjectModal: misma paleta roja que ya usa la app
+   para acciones destructivas (.diagram-toolbar__icon-btn--danger en App.css,
+   .login-error en LoginScreen.css) -- no es un rojo nuevo inventado para este
+   modal. A propósito NO es el mismo estilo neutro que "Cancelar", para que se
+   note a simple vista cuál de los dos botones es la acción irreversible. */
+.project-modal__actions button.project-modal__button--danger {
+  background: #fdecea;
+  border-color: #e0a3a3;
+  color: #b91c1c;
+}
+
+.project-modal__actions button.project-modal__button--danger:hover:not(:disabled) {
+  background: #fbdada;
+}
+
 .project-modal__error {
   margin: 0;
   font-size: 12px;

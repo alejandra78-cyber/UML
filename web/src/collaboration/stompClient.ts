@@ -72,6 +72,35 @@ export class DiagramStompClient {
   private diagramId: string | null = null
   private pendingLocks = new Map<string, (granted: boolean) => void>()
 
+  // Detección de caída de red basada en navigator.onLine/eventos 'offline'/
+  // 'online' del navegador (además del heartbeat STOMP existente, que sigue
+  // intacto -- esto es un mecanismo ADICIONAL, más rápido, no un reemplazo).
+  // Motivo, confirmado en vivo con Playwright cortando la red de verdad
+  // (context.setOffline) durante 45s: con SockJS como transporte, el
+  // heartbeat de @stomp/stompjs (10s/10s por defecto) NO resultó en un
+  // cierre de WebSocket detectado en ese lapso -- onWebSocketClose nunca se
+  // disparó, así que la UI se quedaba mostrando "Conectado" y las mutaciones
+  // NUNCA se encolaban en IndexedDB (sendOrQueueFree/sendOrQueueLocked solo
+  // encola cuando transport === null, y transport nunca se limpiaba). Los
+  // eventos del navegador, en cambio, reaccionan de inmediato.
+  //
+  // Ambos handlers llaman a `forceDisconnect()` (no `deactivate()`): cierra
+  // el WebSocket ya mismo SIN detener el bucle de reconexión automática de
+  // stompjs (reconnectDelay sigue vigente) -- disparar el mismo
+  // onWebSocketClose de siempre reusa el camino existente (onDisconnected ->
+  // updateConnectionStatus('offline') + disconnectTransport() en App.tsx) en
+  // vez de duplicar esa lógica acá. En 'online' se llama a la MISMA función:
+  // si el intento de reconexión en curso quedó colgado (WebSocket que nunca
+  // llegó a abrir mientras la red estaba realmente caída), forceDisconnect
+  // lo descarta igual y deja que el próximo intento programado entre limpio,
+  // en vez de confiar en un handler ya atascado.
+  private handleBrowserOffline = () => {
+    this.client?.forceDisconnect()
+  }
+  private handleBrowserOnline = () => {
+    this.client?.forceDisconnect()
+  }
+
   connect(diagramId: string, token: string, handlers: DiagramStompHandlers) {
     this.disconnect()
     this.diagramId = diagramId
@@ -161,9 +190,14 @@ export class DiagramStompClient {
 
     client.activate()
     this.client = client
+
+    window.addEventListener('offline', this.handleBrowserOffline)
+    window.addEventListener('online', this.handleBrowserOnline)
   }
 
   disconnect() {
+    window.removeEventListener('offline', this.handleBrowserOffline)
+    window.removeEventListener('online', this.handleBrowserOnline)
     this.client?.deactivate()
     this.client = null
     this.diagramId = null

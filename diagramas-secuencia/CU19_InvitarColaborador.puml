@@ -1,0 +1,50 @@
+@startuml CU19_InvitarColaborador
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU19. Invitar colaborador y asignar rol
+
+actor "Administrador/Propietario" as AdminPropietario
+participant InviteMemberModal <<View>>
+participant ProjectController <<Controller>>
+participant Usuario <<Model>>
+participant Invitacion <<Model>>
+
+AdminPropietario -> InviteMemberModal : 19. InvitarColaborador(email, rol)
+activate InviteMemberModal
+
+InviteMemberModal -> ProjectController : 19.1 POST /projects/{id}/members(email, rol)
+activate ProjectController
+
+ProjectController -> Usuario : 19.2 buscarPorEmail(email)
+activate Usuario
+deactivate Usuario
+
+ProjectController -> Invitacion : 19.4 buscarMembresia(proyectoId, usuarioId)
+activate Invitacion
+deactivate Invitacion
+
+ProjectController -> Invitacion : 19.6 crear(proyectoId, usuarioId, rol)
+activate Invitacion
+deactivate Invitacion
+
+ProjectController --> InviteMemberModal : 19.8 201 Created
+deactivate ProjectController
+
+InviteMemberModal --> AdminPropietario : 19.9 Muestra "email agregado al proyecto como rol"
+deactivate InviteMemberModal
+
+@enduml

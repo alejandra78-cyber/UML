@@ -1,0 +1,45 @@
+@startuml CU09_AlternarVista
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU9. Alternar vista UML/ER
+
+actor Observador
+participant ViewModeToggle <<View>>
+participant ViewModeStore <<Controller>>
+participant MetamodeloCanonico <<Model>>
+
+note over ViewModeToggle, ViewModeStore
+  Caso de uso 100% local al cliente (RF-01.6): no existe
+  llamada HTTP ni STOMP a ningún controlador Spring Boot para
+  esta operación. "ViewModeStore" es el store Zustand que
+  cumple el rol de "controlador" de esta vista.
+end note
+
+Observador -> ViewModeToggle : 9. AlternarVista(modo)
+activate ViewModeToggle
+ViewModeToggle -> ViewModeStore : 9.1 setViewMode(modo)
+activate ViewModeStore
+ViewModeStore -> MetamodeloCanonico : 9.2 obtenerClasesYRelaciones()
+activate MetamodeloCanonico
+deactivate MetamodeloCanonico
+ViewModeStore --> ViewModeToggle : 9.4 viewMode actualizado
+deactivate ViewModeStore
+ViewModeToggle -> ViewModeToggle : 9.5 re-renderizar nodos/edges según notación UML o ER
+ViewModeToggle --> Observador : 9.6 Muestra el diagrama en la notación elegida
+deactivate ViewModeToggle
+
+@enduml

@@ -1,0 +1,50 @@
+@startuml CU11_ComandoTexto
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU11. Modelar por comando de texto
+
+actor Editor
+participant VoiceToolbar <<View>>
+participant VoiceCommandController <<Controller>>
+participant ComandoIA <<Model>>
+participant ElementoDiagrama <<Model>>
+
+Editor -> VoiceToolbar : 11. ModelarPorTexto(comando)
+activate VoiceToolbar
+
+VoiceToolbar -> VoiceCommandController : 11.1 POST /diagrams/{id}/ai-command(comando)
+activate VoiceCommandController
+
+VoiceCommandController -> ComandoIA : 11.2 validarGuardrailAntiGeneracionMasiva(comando)
+activate ComandoIA
+deactivate ComandoIA
+
+VoiceCommandController -> ComandoIA : 11.4 interpretar(comando, modeloActual)
+activate ComandoIA
+deactivate ComandoIA
+
+VoiceCommandController -> ElementoDiagrama : 11.6 aplicarOperaciones(operaciones)
+activate ElementoDiagrama
+deactivate ElementoDiagrama
+
+VoiceCommandController --> VoiceToolbar : 11.8 VoiceCommandResponse(appliedCount, rejectedCount, truncated)
+deactivate VoiceCommandController
+
+VoiceToolbar --> Editor : 11.9 Muestra el resumen ("N operaciones aplicadas")
+deactivate VoiceToolbar
+
+@enduml

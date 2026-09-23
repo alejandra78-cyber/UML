@@ -1,0 +1,65 @@
+@startuml CU07_GestionarMetodos
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU7. Gestionar métodos y operaciones
+
+actor Editor
+participant ClassContextMenu <<View>>
+participant CollaborationStompController <<Controller>>
+participant Metodo <<Model>>
+
+Editor -> ClassContextMenu : 7. AgregarMetodo(classId)
+activate ClassContextMenu
+ClassContextMenu -> CollaborationStompController : 7.1 SEND /app/diagram/{id}/lock(ACQUIRE, classId)
+activate CollaborationStompController
+CollaborationStompController --> ClassContextMenu : 7.2 lockConcedido
+deactivate CollaborationStompController
+ClassContextMenu -> CollaborationStompController : 7.3 SEND /app/diagram/{id}/mutate(ADD_METHOD, classId, payload)
+activate CollaborationStompController
+CollaborationStompController -> Metodo : 7.4 crear(id, nombre, tipoRetorno, visibilidad, parametros)
+activate Metodo
+deactivate Metodo
+CollaborationStompController --> ClassContextMenu : 7.6 StompBroadcastMessage(ADD_METHOD, payload)
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 7.7 Muestra el método nuevo en la clase
+
+Editor -> ClassContextMenu : 7.8 EditarMetodo(methodId, cambios)
+ClassContextMenu -> CollaborationStompController : 7.9 SEND /app/diagram/{id}/lock(ACQUIRE, methodId)
+activate CollaborationStompController
+CollaborationStompController --> ClassContextMenu : 7.10 lockConcedido
+deactivate CollaborationStompController
+ClassContextMenu -> CollaborationStompController : 7.11 SEND /app/diagram/{id}/mutate(UPDATE_METHOD, methodId, diff)
+activate CollaborationStompController
+CollaborationStompController -> Metodo : 7.12 actualizar(methodId, diff)
+activate Metodo
+deactivate Metodo
+CollaborationStompController --> ClassContextMenu : 7.14 StompBroadcastMessage(UPDATE_METHOD, payload)
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 7.15 Refleja los cambios del método
+
+Editor -> ClassContextMenu : 7.16 EliminarMetodo(methodId)
+ClassContextMenu -> CollaborationStompController : 7.17 SEND /app/diagram/{id}/mutate(DELETE_METHOD, methodId)
+activate CollaborationStompController
+CollaborationStompController -> Metodo : 7.18 eliminar(methodId)
+activate Metodo
+deactivate Metodo
+CollaborationStompController --> ClassContextMenu : 7.20 StompBroadcastMessage(DELETE_METHOD, methodId)
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 7.21 Quita el método de la clase
+deactivate ClassContextMenu
+
+@enduml

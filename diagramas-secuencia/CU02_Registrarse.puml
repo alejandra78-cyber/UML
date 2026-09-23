@@ -1,0 +1,47 @@
+@startuml CU02_Registrarse
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU2. Registrarse
+
+actor Observador
+participant LoginScreen <<View>>
+participant AuthController <<Controller>>
+participant Usuario <<Model>>
+
+Observador -> LoginScreen : 2. Registrarse(email, password, nombreCompleto)
+activate LoginScreen
+
+LoginScreen -> AuthController : 2.1 POST /api/v1/auth/register(email, password, nombreCompleto)
+activate AuthController
+
+AuthController -> Usuario : 2.2 existePorEmail(email)
+activate Usuario
+deactivate Usuario
+
+AuthController -> Usuario : 2.4 crear(email, passwordHash, nombreCompleto)
+activate Usuario
+deactivate Usuario
+
+AuthController -> AuthController : 2.6 generarToken(usuarioId, email)
+
+AuthController --> LoginScreen : 2.7 201 Created (token, usuarioId, email, nombreCompleto)
+deactivate AuthController
+
+LoginScreen --> Observador : 2.8 Cuenta creada, ingreso automático al selector de proyectos
+deactivate LoginScreen
+
+@enduml

@@ -1,0 +1,45 @@
+@startuml CU18_CrearProyecto
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU18. Crear proyecto
+
+actor Observador
+participant CreateProjectModal <<View>>
+participant ProjectController <<Controller>>
+participant Proyecto <<Model>>
+
+Observador -> CreateProjectModal : 18. CrearProyecto(nombre, descripcion)
+activate CreateProjectModal
+
+CreateProjectModal -> ProjectController : 18.1 POST /api/v1/projects(nombre, descripcion)
+activate ProjectController
+
+ProjectController -> Proyecto : 18.2 crear(nombre, descripcion, ownerId)
+activate Proyecto
+deactivate Proyecto
+
+ProjectController -> Proyecto : 18.4 asignarPropietario(proyectoId, ownerId, OWNER)
+activate Proyecto
+deactivate Proyecto
+
+ProjectController --> CreateProjectModal : 18.6 201 Created (ProjectResponse)
+deactivate ProjectController
+
+CreateProjectModal --> Observador : 18.7 Activa el proyecto nuevo y entra al lienzo
+deactivate CreateProjectModal
+
+@enduml

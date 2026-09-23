@@ -1,0 +1,49 @@
+@startuml CU13_TrabajarSinConexion
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU13. Trabajar sin conexión
+
+actor Editor
+participant OfflineSyncBanner <<View>>
+participant offlineQueue <<Controller>>
+participant CambioOffline <<Model>>
+
+note over OfflineSyncBanner, offlineQueue
+  Escenario sin conexión (transport STOMP = null): no hay
+  ningún controlador Spring Boot disponible. "offlineQueue" es
+  el módulo cliente (IndexedDB) que cumple el rol de
+  "controlador" local en este flujo, por diseño (UC11).
+end note
+
+Editor -> OfflineSyncBanner : 13. EditarSinConexion(cambio)
+activate OfflineSyncBanner
+
+OfflineSyncBanner -> offlineQueue : 13.1 enqueueMutation(diagramId, operationType, targetId, payload)
+activate offlineQueue
+
+offlineQueue -> CambioOffline : 13.2 guardar(id, diagramId, operationType, payload, queuedAt)
+activate CambioOffline
+deactivate CambioOffline
+
+offlineQueue --> OfflineSyncBanner : 13.4 pendingMutationCount actualizado
+deactivate offlineQueue
+
+OfflineSyncBanner -> OfflineSyncBanner : 13.5 aplicar el cambio de forma optimista en el lienzo local
+OfflineSyncBanner --> Editor : 13.6 Indica "Desconectado — N cambios pendientes de sincronizar"
+deactivate OfflineSyncBanner
+
+@enduml

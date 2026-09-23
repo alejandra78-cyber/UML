@@ -1,0 +1,65 @@
+@startuml CU06_GestionarAtributos
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU6. Gestionar atributos tipados
+
+actor Editor
+participant ClassContextMenu <<View>>
+participant CollaborationStompController <<Controller>>
+participant Atributo <<Model>>
+
+Editor -> ClassContextMenu : 6. AgregarAtributo(classId)
+activate ClassContextMenu
+ClassContextMenu -> CollaborationStompController : 6.1 SEND /app/diagram/{id}/lock(ACQUIRE, classId)
+activate CollaborationStompController
+CollaborationStompController --> ClassContextMenu : 6.2 lockConcedido
+deactivate CollaborationStompController
+ClassContextMenu -> CollaborationStompController : 6.3 SEND /app/diagram/{id}/mutate(ADD_ATTRIBUTE, classId, payload)
+activate CollaborationStompController
+CollaborationStompController -> Atributo : 6.4 crear(id, nombre, tipo, longitud, esPK, esNullable)
+activate Atributo
+deactivate Atributo
+CollaborationStompController --> ClassContextMenu : 6.6 StompBroadcastMessage(ADD_ATTRIBUTE, payload)
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 6.7 Muestra el atributo nuevo en la clase
+
+Editor -> ClassContextMenu : 6.8 EditarAtributo(attributeId, cambios)
+ClassContextMenu -> CollaborationStompController : 6.9 SEND /app/diagram/{id}/lock(ACQUIRE, attributeId)
+activate CollaborationStompController
+CollaborationStompController --> ClassContextMenu : 6.10 lockConcedido
+deactivate CollaborationStompController
+ClassContextMenu -> CollaborationStompController : 6.11 SEND /app/diagram/{id}/mutate(UPDATE_ATTRIBUTE, attributeId, diff)
+activate CollaborationStompController
+CollaborationStompController -> Atributo : 6.12 actualizar(attributeId, diff)
+activate Atributo
+deactivate Atributo
+CollaborationStompController --> ClassContextMenu : 6.14 StompBroadcastMessage(UPDATE_ATTRIBUTE, payload)
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 6.15 Refleja los cambios del atributo (tipo, PK, nullable, etc.)
+
+Editor -> ClassContextMenu : 6.16 EliminarAtributo(attributeId)
+ClassContextMenu -> CollaborationStompController : 6.17 SEND /app/diagram/{id}/mutate(DELETE_ATTRIBUTE, attributeId)
+activate CollaborationStompController
+CollaborationStompController -> Atributo : 6.18 eliminar(attributeId)
+activate Atributo
+deactivate Atributo
+CollaborationStompController --> ClassContextMenu : 6.20 StompBroadcastMessage(DELETE_ATTRIBUTE, attributeId)
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 6.21 Quita el atributo de la clase
+deactivate ClassContextMenu
+
+@enduml

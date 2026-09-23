@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { authFetch, clearCachedActiveProject } from '../collaboration/diagramBootstrap'
 import { useAuthStore } from '../auth/useAuthStore'
+import { DeleteProjectModal } from './DeleteProjectModal'
 
 // Gestión de Proyecto — UC19 (Eliminar Proyecto). Conectado de verdad: el
 // backend ya está cerrado. Borra en cascada del lado del servidor (proyecto,
-// miembros, diagramas, historial de operaciones), así que se confirma antes con
-// window.confirm dejando explícito que es irreversible y qué se pierde -- no
-// hace falta un modal de confirmación custom para esto.
+// miembros, diagramas, historial de operaciones), así que se confirma antes --
+// ya no con window.confirm nativo, sino con DeleteProjectModal.tsx (mismo look
+// que InviteMemberModal.tsx/CreateProjectModal.tsx en vez de un diálogo nativo
+// del navegador sin estilo). La lógica de borrado en sí no cambió: solo el
+// disparador pasa de "confirmed = window.confirm(...)" a abrir el modal y
+// esperar su `onConfirm`.
 //
 // Caso borde conocido y aceptado por ahora (no lo resuelve este componente): el
 // cascade delete del backend no notifica a conexiones STOMP de OTROS usuarios
@@ -27,16 +31,22 @@ interface DeleteProjectButtonProps {
 export function DeleteProjectButton({ projectId, onDeleted }: DeleteProjectButtonProps) {
   const token = useAuthStore((state) => state.token)
   const userId = useAuthStore((state) => state.userId)
+  const [modalOpen, setModalOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  async function handleClick() {
+  function openModal() {
+    setErrorMessage(null)
+    setModalOpen(true)
+  }
+
+  function closeModal() {
+    if (busy) return
+    setModalOpen(false)
+  }
+
+  async function handleConfirmDelete() {
     if (!token || !userId || !projectId) return
-    const confirmed = window.confirm(
-      'Esto elimina el proyecto de forma DEFINITIVA e IRREVERSIBLE, junto con todos sus miembros, ' +
-        'diagramas y el historial de operaciones asociado. ¿Confirmás que querés eliminarlo?',
-    )
-    if (!confirmed) return
 
     setBusy(true)
     setErrorMessage(null)
@@ -49,6 +59,7 @@ export function DeleteProjectButton({ projectId, onDeleted }: DeleteProjectButto
         return
       }
       clearCachedActiveProject(userId)
+      setModalOpen(false)
       onDeleted()
     } catch {
       setErrorMessage('No se pudo contactar al backend en http://localhost:8080')
@@ -63,12 +74,18 @@ export function DeleteProjectButton({ projectId, onDeleted }: DeleteProjectButto
         type="button"
         className="diagram-toolbar__icon-btn diagram-toolbar__icon-btn--danger"
         title="Eliminar el proyecto activo (irreversible)"
-        onClick={handleClick}
-        disabled={!projectId || busy}
+        onClick={openModal}
+        disabled={!projectId}
       >
-        <span aria-hidden>🗑️</span> {busy ? 'Eliminando…' : 'Eliminar proyecto'}
+        <span aria-hidden>🗑️</span> Eliminar proyecto
       </button>
-      {errorMessage && <span className="diagram-toolbar__tooltip">{errorMessage}</span>}
+      <DeleteProjectModal
+        open={modalOpen}
+        busy={busy}
+        errorMessage={errorMessage}
+        onCancel={closeModal}
+        onConfirm={handleConfirmDelete}
+      />
     </span>
   )
 }

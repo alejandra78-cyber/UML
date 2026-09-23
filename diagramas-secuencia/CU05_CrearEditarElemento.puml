@@ -1,0 +1,65 @@
+@startuml CU05_CrearEditarElemento
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU5. Crear/Editar/Eliminar clase o tabla
+
+actor Editor
+participant ClassContextMenu <<View>>
+participant CollaborationStompController <<Controller>>
+participant ElementoDiagrama <<Model>>
+
+Editor -> ClassContextMenu : 5. CrearClase(nombre)
+activate ClassContextMenu
+ClassContextMenu -> CollaborationStompController : 5.1 SEND /app/diagram/{id}/mutate(ADD_CLASS, payload)
+activate CollaborationStompController
+CollaborationStompController -> ElementoDiagrama : 5.2 crear(id, nombre, visibilidad, posicion)
+activate ElementoDiagrama
+deactivate ElementoDiagrama
+CollaborationStompController --> ClassContextMenu : 5.4 StompBroadcastMessage(ADD_CLASS, payload)
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 5.5 Muestra la clase nueva en el lienzo
+
+Editor -> ClassContextMenu : 5.6 EditarClase(id, nombre)
+ClassContextMenu -> CollaborationStompController : 5.7 SEND /app/diagram/{id}/lock(ACQUIRE, id)
+activate CollaborationStompController
+CollaborationStompController --> ClassContextMenu : 5.8 lockConcedido
+deactivate CollaborationStompController
+ClassContextMenu -> CollaborationStompController : 5.9 SEND /app/diagram/{id}/mutate(RENAME_CLASS, id, {name})
+activate CollaborationStompController
+CollaborationStompController -> ElementoDiagrama : 5.10 renombrar(id, nombre)
+activate ElementoDiagrama
+deactivate ElementoDiagrama
+CollaborationStompController --> ClassContextMenu : 5.12 StompBroadcastMessage(RENAME_CLASS, payload)
+deactivate CollaborationStompController
+ClassContextMenu -> CollaborationStompController : 5.13 SEND /app/diagram/{id}/lock(RELEASE, id)
+activate CollaborationStompController
+CollaborationStompController --> ClassContextMenu : 5.14 lockLiberado
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 5.15 Muestra el nombre actualizado
+
+Editor -> ClassContextMenu : 5.16 EliminarClase(id)
+ClassContextMenu -> CollaborationStompController : 5.17 SEND /app/diagram/{id}/mutate(DELETE_CLASS, id)
+activate CollaborationStompController
+CollaborationStompController -> ElementoDiagrama : 5.18 eliminar(id)
+activate ElementoDiagrama
+deactivate ElementoDiagrama
+CollaborationStompController --> ClassContextMenu : 5.20 StompBroadcastMessage(DELETE_CLASS, id)
+deactivate CollaborationStompController
+ClassContextMenu --> Editor : 5.21 Elimina la clase y sus relaciones del lienzo
+deactivate ClassContextMenu
+
+@enduml

@@ -1,0 +1,66 @@
+@startuml CU12_ImportarPizarra
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU12. Importar diagrama desde foto de pizarra
+
+actor Editor
+participant VisionModal <<View>>
+participant VisionImportController <<Controller>>
+participant ComandoIA <<Model>>
+participant ElementoDiagrama <<Model>>
+
+Editor -> VisionModal : 12. ImportarFotoPizarra(imagen)
+activate VisionModal
+
+VisionModal -> VisionImportController : 12.1 POST /diagrams/{id}/vision-import(imagen multipart)
+activate VisionImportController
+
+VisionImportController -> ComandoIA : 12.2 analizarImagen(imagen, modeloActual)
+activate ComandoIA
+deactivate ComandoIA
+
+VisionImportController --> VisionModal : 12.4 200 OK DraftModelResponse(borrador)
+deactivate VisionImportController
+
+VisionModal -> VisionModal : 12.5 mostrar revisión Human-in-the-Loop (incluir/renombrar)
+VisionModal --> Editor : 12.6 Muestra el borrador detectado para revisión
+
+Editor -> VisionModal : 12.7 ConfirmarBorrador(clasesIncluidas, relacionesIncluidas)
+VisionModal -> ElementoDiagrama : 12.8 addClass(clase) [por cada clase incluida]
+activate ElementoDiagrama
+ElementoDiagrama --> VisionModal : 12.9 elementoCreado
+deactivate ElementoDiagrama
+
+VisionModal -> ElementoDiagrama : 12.10 addRelationship(relacion) [por cada relación incluida]
+activate ElementoDiagrama
+ElementoDiagrama --> VisionModal : 12.11 relacionCreada
+deactivate ElementoDiagrama
+
+VisionModal --> Editor : 12.12 Agrega las clases y relaciones confirmadas al diagrama
+deactivate VisionModal
+
+note over VisionModal, ElementoDiagrama
+  Los pasos 12.8/12.10 viajan, en el sistema real, por el mismo
+  canal ADD_CLASS/ADD_RELATIONSHIP (CollaborationStompController)
+  que usan CU5 y CU8 — se omite aquí ese salto intermedio por
+  simplicidad, ya que está documentado en esos diagramas. Nótese
+  que estas dos llamadas son View -> Model directamente (no pasan
+  por el <<Controller>> de este diagrama), por eso conservan su
+  retorno explícito.
+end note
+
+@enduml

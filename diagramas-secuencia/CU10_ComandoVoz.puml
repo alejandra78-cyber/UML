@@ -1,0 +1,51 @@
+@startuml CU10_ComandoVoz
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU10. Modelar por comando de voz
+
+actor Editor
+participant VoiceToolbar <<View>>
+participant VoiceCommandController <<Controller>>
+participant ComandoIA <<Model>>
+participant ElementoDiagrama <<Model>>
+
+Editor -> VoiceToolbar : 10. ModelarPorVoz(audio)
+activate VoiceToolbar
+VoiceToolbar -> VoiceToolbar : 10.1 transcribir(audio) [Web Speech API -> texto]
+
+VoiceToolbar -> VoiceCommandController : 10.2 POST /diagrams/{id}/ai-command(texto)
+activate VoiceCommandController
+
+VoiceCommandController -> ComandoIA : 10.3 validarGuardrailAntiGeneracionMasiva(texto)
+activate ComandoIA
+deactivate ComandoIA
+
+VoiceCommandController -> ComandoIA : 10.5 interpretar(texto, modeloActual)
+activate ComandoIA
+deactivate ComandoIA
+
+VoiceCommandController -> ElementoDiagrama : 10.7 aplicarOperaciones(operaciones)
+activate ElementoDiagrama
+deactivate ElementoDiagrama
+
+VoiceCommandController --> VoiceToolbar : 10.9 VoiceCommandResponse(appliedCount, rejectedCount, truncated)
+deactivate VoiceCommandController
+
+VoiceToolbar --> Editor : 10.10 Muestra el resumen ("N operaciones aplicadas")
+deactivate VoiceToolbar
+
+@enduml

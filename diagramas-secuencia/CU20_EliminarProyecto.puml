@@ -1,0 +1,53 @@
+@startuml CU20_EliminarProyecto
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU20. Eliminar proyecto
+
+actor "Administrador/Propietario" as AdminPropietario
+participant DeleteProjectButton <<View>>
+participant ProjectController <<Controller>>
+participant Proyecto <<Model>>
+
+AdminPropietario -> DeleteProjectButton : 20. EliminarProyecto(confirmacion)
+activate DeleteProjectButton
+
+DeleteProjectButton -> ProjectController : 20.1 DELETE /api/v1/projects/{id}
+activate ProjectController
+
+ProjectController -> Proyecto : 20.2 verificarPropietario(proyectoId, usuarioId)
+activate Proyecto
+deactivate Proyecto
+
+ProjectController -> Proyecto : 20.4 eliminarOperacionesYDiagramas(proyectoId)
+activate Proyecto
+deactivate Proyecto
+
+ProjectController -> Proyecto : 20.6 eliminarMiembros(proyectoId)
+activate Proyecto
+deactivate Proyecto
+
+ProjectController -> Proyecto : 20.8 eliminar(proyectoId)
+activate Proyecto
+deactivate Proyecto
+
+ProjectController --> DeleteProjectButton : 20.10 204 No Content
+deactivate ProjectController
+
+DeleteProjectButton --> AdminPropietario : 20.11 Vuelve al selector de proyectos
+deactivate DeleteProjectButton
+
+@enduml

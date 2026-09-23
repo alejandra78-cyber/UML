@@ -1,0 +1,46 @@
+@startuml CU17_ImportarXMI
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU17. Importar diagrama desde XMI
+
+actor Editor
+participant ImportXmiButton <<View>>
+participant XmiController <<Controller>>
+participant ExportacionXMI <<Model>>
+participant MetamodeloCanonico <<Model>>
+
+Editor -> ImportXmiButton : 17. ImportarXMI(archivoXmi)
+activate ImportXmiButton
+
+ImportXmiButton -> XmiController : 17.1 POST /projects/{projectId}/import-xmi(xmiContent)
+activate XmiController
+
+XmiController -> ExportacionXMI : 17.2 importarDesdeXmi(xmiContent)
+activate ExportacionXMI
+deactivate ExportacionXMI
+
+XmiController -> MetamodeloCanonico : 17.4 crearDiagrama(projectId, nombre, modeloImportado)
+activate MetamodeloCanonico
+deactivate MetamodeloCanonico
+
+XmiController --> ImportXmiButton : 17.6 201 Created (DiagramResponse)
+deactivate XmiController
+
+ImportXmiButton --> Editor : 17.7 Muestra "Se creó un nuevo diagrama" con opción de abrirlo
+deactivate ImportXmiButton
+
+@enduml

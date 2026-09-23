@@ -1,0 +1,42 @@
+@startuml CU16_ExportarXMI
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU16. Exportar diagrama a XMI
+
+actor Observador
+participant ExportXmiButton <<View>>
+participant XmiController <<Controller>>
+participant ExportacionXMI <<Model>>
+
+Observador -> ExportXmiButton : 16. ExportarXMI()
+activate ExportXmiButton
+
+ExportXmiButton -> XmiController : 16.1 GET /diagrams/{id}/export-xmi
+activate XmiController
+
+XmiController -> ExportacionXMI : 16.2 exportarAXmi(modeloActual, nombreDiagrama)
+activate ExportacionXMI
+deactivate ExportacionXMI
+
+XmiController --> ExportXmiButton : 16.4 200 OK (application/xml, diagrama.xmi)
+deactivate XmiController
+
+ExportXmiButton -> ExportXmiButton : 16.5 downloadBlob(xmi, nombreArchivo)
+ExportXmiButton --> Observador : 16.6 Descarga el archivo .xmi
+deactivate ExportXmiButton
+
+@enduml

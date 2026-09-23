@@ -5,14 +5,26 @@
   gap: 6px;
 }
 
+/* Borde/foco en el mismo celeste de acento que el resto de la app (handles de
+   conexión en App.css, anillo de foco de LoginScreen.css) -- antes era un borde
+   gris genérico indistinguible del resto de controles planos de la barra. */
 .voice-toolbar__command-input {
   font-size: 12px;
   padding: 6px 8px;
   border-radius: 4px;
-  border: 1px solid #ccc;
-  background: transparent;
-  color: inherit;
-  width: 160px;
+  border: 1.5px solid rgba(56, 189, 248, 0.5);
+  background: #fff;
+  color: #1a1a1a;
+  width: 170px;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.voice-toolbar__command-input:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
 }
 
 .voice-toolbar__command-input:disabled {
@@ -20,13 +32,29 @@
   cursor: not-allowed;
 }
 
+/* Más grande y con fondo de acento (antes: mismo tamaño y borde gris plano que
+   cualquier otro botón de la barra) para que el micrófono tenga el peso visual
+   que corresponde a CU10, no el de un control secundario más. */
 .voice-toolbar__button {
-  font-size: 15px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  background: transparent;
+  font-size: 17px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.15);
   cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.voice-toolbar__button:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.28);
+  border-color: #38bdf8;
+}
+
+.voice-toolbar__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .voice-toolbar__button--listening {

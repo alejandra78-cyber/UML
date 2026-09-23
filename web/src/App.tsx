@@ -72,32 +72,6 @@ function colorForUser(userId: string): string {
   return PRESENCE_COLOR_PALETTE[Math.abs(hash) % PRESENCE_COLOR_PALETTE.length]
 }
 
-/**
- * Botón "Paquete" de la barra superior: placeholder inerte, igual patrón que
- * VoiceToolbar/VisionModal (Fase 4). El frontend hoy no tiene ningún soporte de
- * paquetes (CanonicalModel no trae `packages`, no hay acción addPackage en el
- * store) aunque el backend y el plan ya definen ADD_PACKAGE/UPDATE_PACKAGE/
- * DELETE_PACKAGE -- implementarlo de verdad es lógica nueva, fuera del alcance de
- * "solo capa de presentación" de esta tarea. Queda listo para activarse después.
- */
-function PackageToolButton() {
-  const [showComingSoon, setShowComingSoon] = useState(false)
-
-  function handleClick() {
-    setShowComingSoon(true)
-    window.setTimeout(() => setShowComingSoon(false), 2000)
-  }
-
-  return (
-    <span className="diagram-toolbar__package-btn">
-      <button type="button" className="diagram-toolbar__icon-btn" title="Paquete (próximamente)" onClick={handleClick}>
-        <span aria-hidden>📦</span> Paquete
-      </button>
-      {showComingSoon && <span className="diagram-toolbar__tooltip">Próximamente</span>}
-    </span>
-  )
-}
-
 interface DiagramWorkspaceProps {
   projectId: string
   diagramId: string
@@ -360,7 +334,6 @@ function DiagramWorkspace({ projectId, diagramId, initialSnapshot, onBackToSelec
           <button type="button" className="diagram-toolbar__icon-btn" title="Agregar clase" onClick={() => addClass()}>
             <span aria-hidden>▭</span> Clase
           </button>
-          <PackageToolButton />
         </div>
 
         <div
@@ -391,8 +364,16 @@ function DiagramWorkspace({ projectId, diagramId, initialSnapshot, onBackToSelec
 
         {/* Uso frecuente durante el modelado: se queda siempre visible, sin
             agrupar (ver reorganización de la barra más abajo). */}
-        <div className="diagram-toolbar__group" role="group" aria-label="Vista y comandos de IA">
+        <div className="diagram-toolbar__group" role="group" aria-label="Vista">
           <ViewModeToggle />
+        </div>
+
+        {/* CU10/CU11 (comando de voz/texto): separado en su propio contenedor con
+            acento celeste (ver App.css) en vez de compartir el grupo genérico con
+            ViewModeToggle -- antes se perdía entre el resto de botones planos de la
+            barra a pesar de ser una de las funciones de alcance confirmado, no un
+            placeholder. */}
+        <div className="diagram-toolbar__group--voice" role="group" aria-label="Comando de voz o texto">
           <VoiceToolbar diagramId={diagramId} />
         </div>
 

@@ -1,0 +1,53 @@
+@startuml CU15_GenerarBackend
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU15. Generar backend Spring Boot
+
+actor Editor
+participant GenerateBackendButton <<View>>
+participant GeneratorController <<Controller>>
+participant TrabajoGeneracionBackend <<Model>>
+
+Editor -> GenerateBackendButton : 15. GenerarBackend()
+activate GenerateBackendButton
+
+GenerateBackendButton -> GeneratorController : 15.1 GET /diagrams/{id}/validate
+activate GeneratorController
+GeneratorController -> TrabajoGeneracionBackend : 15.2 validarMetamodelo(modeloActual)
+activate TrabajoGeneracionBackend
+deactivate TrabajoGeneracionBackend
+GeneratorController --> GenerateBackendButton : 15.4 200 OK (valid = true)
+deactivate GeneratorController
+
+GenerateBackendButton -> GeneratorController : 15.5 POST /diagrams/{id}/generate-backend(basePackage)
+activate GeneratorController
+GeneratorController -> TrabajoGeneracionBackend : 15.6 generarProyecto(modelo, basePackage, nombreDiagrama)
+activate TrabajoGeneracionBackend
+deactivate TrabajoGeneracionBackend
+
+GeneratorController -> TrabajoGeneracionBackend : 15.8 empaquetarZip(directorioTemporal)
+activate TrabajoGeneracionBackend
+deactivate TrabajoGeneracionBackend
+
+GeneratorController --> GenerateBackendButton : 15.10 200 OK (application/octet-stream, backend.zip)
+deactivate GeneratorController
+
+GenerateBackendButton -> GenerateBackendButton : 15.11 downloadBlob(zip, nombreArchivo)
+GenerateBackendButton --> Editor : 15.12 Descarga el proyecto Spring Boot generado
+deactivate GenerateBackendButton
+
+@enduml

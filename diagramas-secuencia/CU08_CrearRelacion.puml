@@ -1,0 +1,51 @@
+@startuml CU08_CrearRelacion
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU8. Crear/Editar relación
+
+actor Editor
+participant UmlRelationshipEdge <<View>>
+participant CollaborationStompController <<Controller>>
+participant Relacion <<Model>>
+
+Editor -> UmlRelationshipEdge : 8. CrearRelacion(sourceClassId, targetClassId, tipo)
+activate UmlRelationshipEdge
+UmlRelationshipEdge -> CollaborationStompController : 8.1 SEND /app/diagram/{id}/mutate(ADD_RELATIONSHIP, payload)
+activate CollaborationStompController
+CollaborationStompController -> Relacion : 8.2 crear(id, sourceClassId, targetClassId, tipo, multiplicidades)
+activate Relacion
+deactivate Relacion
+CollaborationStompController --> UmlRelationshipEdge : 8.4 StompBroadcastMessage(ADD_RELATIONSHIP, payload)
+deactivate CollaborationStompController
+UmlRelationshipEdge --> Editor : 8.5 Dibuja la relación nueva en el lienzo
+
+Editor -> UmlRelationshipEdge : 8.6 EditarRelacion(id, cambios)
+UmlRelationshipEdge -> CollaborationStompController : 8.7 SEND /app/diagram/{id}/lock(ACQUIRE, id)
+activate CollaborationStompController
+CollaborationStompController --> UmlRelationshipEdge : 8.8 lockConcedido
+deactivate CollaborationStompController
+UmlRelationshipEdge -> CollaborationStompController : 8.9 SEND /app/diagram/{id}/mutate(UPDATE_RELATIONSHIP, id, diff)
+activate CollaborationStompController
+CollaborationStompController -> Relacion : 8.10 actualizar(id, diff)
+activate Relacion
+deactivate Relacion
+CollaborationStompController --> UmlRelationshipEdge : 8.12 StompBroadcastMessage(UPDATE_RELATIONSHIP, payload)
+deactivate CollaborationStompController
+UmlRelationshipEdge --> Editor : 8.13 Refleja los cambios de la relación (multiplicidad, rol, tipo)
+deactivate UmlRelationshipEdge
+
+@enduml

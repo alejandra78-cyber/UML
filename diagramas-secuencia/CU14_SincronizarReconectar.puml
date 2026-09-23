@@ -1,0 +1,63 @@
+@startuml CU14_SincronizarReconectar
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU14. Sincronizar cambios al reconectar
+
+actor Editor
+participant OfflineSyncBanner <<View>>
+participant DiagramController <<Controller>>
+participant CambioOffline <<Model>>
+
+Editor -> OfflineSyncBanner : 14. Reconectar()
+activate OfflineSyncBanner
+
+OfflineSyncBanner -> CambioOffline : 14.1 getQueuedMutations(diagramId)
+activate CambioOffline
+CambioOffline --> OfflineSyncBanner : 14.2 cola[] (ordenada por queuedAt)
+deactivate CambioOffline
+
+OfflineSyncBanner -> DiagramController : 14.3 POST /diagrams/{id}/sync-offline(operations[])
+activate DiagramController
+
+DiagramController -> CambioOffline : 14.4 reconciliar(operations[]) [rebase en orden de llegada]
+activate CambioOffline
+deactivate CambioOffline
+
+DiagramController --> OfflineSyncBanner : 14.6 ValidationReportDTO(appliedCount, discardedCount, discardedDetails)
+deactivate DiagramController
+
+OfflineSyncBanner -> CambioOffline : 14.7 clearQueue(diagramId)
+activate CambioOffline
+CambioOffline --> OfflineSyncBanner : 14.8 colaVaciada
+deactivate CambioOffline
+
+OfflineSyncBanner -> DiagramController : 14.9 GET /diagrams/{id}/snapshot
+activate DiagramController
+DiagramController --> OfflineSyncBanner : 14.10 snapshot(estadoActual)
+deactivate DiagramController
+
+OfflineSyncBanner -> OfflineSyncBanner : 14.11 hydrate(model)
+OfflineSyncBanner --> Editor : 14.12 Muestra el reporte de reconciliación y el diagrama actualizado
+deactivate OfflineSyncBanner
+
+note over OfflineSyncBanner, CambioOffline
+  14.1, 14.2, 14.7 y 14.8 son llamadas View -> Model directas
+  (lectura/limpieza local de IndexedDB, sin pasar por el
+  <<Controller>>), por eso conservan su retorno explícito.
+end note
+
+@enduml

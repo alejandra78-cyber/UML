@@ -86,6 +86,24 @@
   font-size: 14px;
 }
 
+/* Contenedor propio de VoiceToolbar (CU10/CU11): antes compartía el mismo
+   .diagram-toolbar__group genérico y sin acento que ViewModeToggle, y se perdía
+   visualmente entre el resto de botones planos de la barra a pesar de ser una
+   de las funciones de alcance confirmado (no un placeholder como el extinto
+   botón "Paquete"). Mismo celeste de acento que ya usan los handles/edges del
+   lienzo (#38bdf8, ver más abajo en este archivo) -- no es un color nuevo. El
+   estilo interno de los controles (input/botón de mic) vive en
+   VoiceToolbar.css; esto solo le da al conjunto un contorno propio. */
+.diagram-toolbar__group--voice {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  margin: 0 4px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
 /* El emoji 🗑️ de "Eliminar proyecto" se renderiza en tonos grises/plateados en
    Segoe UI Emoji (Windows) por diseño del glyph -- se confunde a simple vista
    con un botón deshabilitado aunque NO lo está (verificado: el atributo

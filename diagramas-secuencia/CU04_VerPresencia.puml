@@ -1,0 +1,42 @@
+@startuml CU04_VerPresencia
+skinparam backgroundColor #FFFFFF
+skinparam DefaultFontColor #000000
+skinparam sequence {
+    ArrowColor #000000
+    ArrowFontSize 9
+    LifeLineBorderColor #000000
+    LifeLineBackgroundColor #FFFFFF
+    ActorBorderColor #000000
+    ActorBackgroundColor #FFFFFF
+    ActorFontStyle normal
+    ParticipantBorderColor #000000
+    ParticipantBackgroundColor #FFFFFF
+    ParticipantFontSize 10
+    ParticipantFontStyle normal
+}
+
+title CU4. Ver presencia de colaboradores
+
+actor Observador
+participant CollaboratorPresence <<View>>
+participant CollaborationStompController <<Controller>>
+participant SesionPresencia <<Model>>
+
+Observador -> CollaboratorPresence : 4. VerColaboradoresConectados()
+activate CollaboratorPresence
+
+CollaboratorPresence -> CollaborationStompController : 4.1 SEND /app/diagram/{diagramId}/presence/join(userName, color)
+activate CollaborationStompController
+
+CollaborationStompController -> SesionPresencia : 4.2 registrarPresencia(diagramId, userId, userName, color)
+activate SesionPresencia
+deactivate SesionPresencia
+
+CollaborationStompController --> CollaboratorPresence : 4.4 PresenceMessage(JOINED, userId, userName, color)
+deactivate CollaborationStompController
+
+CollaboratorPresence -> CollaboratorPresence : 4.5 actualizar cursores remotos (usePresenceStore)
+CollaboratorPresence --> Observador : 4.6 Muestra avatares y cursores de los colaboradores conectados
+deactivate CollaboratorPresence
+
+@enduml
