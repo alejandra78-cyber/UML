@@ -1,15 +1,15 @@
+version: '3.8'
+
 services:
+  # Base de datos PostgreSQL 16
   postgres:
-    image: postgres:16
+    image: postgres:16-alpine
+    container_name: backend-postgres-1
     restart: always
     environment:
       POSTGRES_DB: umlapp
       POSTGRES_USER: umlapp
-      POSTGRES_PASSWORD: umlapp_dev_password
-    ports:
-      # Remapeado a 5433 en el host: el puerto 5432 ya esta ocupado por un
-      # servicio nativo de PostgreSQL 15 de Windows (postgresql-x64-15).
-      - "5433:5432"
+      POSTGRES_PASSWORD: umlapp_dev_password # Cámbiala por una segura
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +17,37 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    # No exponemos el puerto al exterior por seguridad; los demás contenedores se conectan internamente.
+
+  # Backend Spring Boot (Java 21)
+  backend:
+    build:
+      context: ./backend # Ajusta la ruta a la carpeta de tu backend
+      dockerfile: Dockerfile
+    container_name: backend-springboot
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/umlapp
+      SPRING_DATASOURCE_USERNAME: umlapp
+      SPRING_DATASOURCE_PASSWORD: umlapp_production_password
+      JWT_SECRET: fEBJ64I7+yN3sM92FtSywMal7BN1Y5LlqgsIcxKp/7M=
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Frontend Web React 18 + Vite
+  frontend:
+    build:
+      context: ./frontend # Ajusta la ruta a la carpeta de tu web
+      dockerfile: Dockerfile
+    container_name: frontend-react
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
