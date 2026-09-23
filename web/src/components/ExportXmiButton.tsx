@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { authFetch } from '../collaboration/diagramBootstrap'
 import { useAuthStore } from '../auth/useAuthStore'
+import { API_BASE_URL } from '../config'
 import { downloadBlob, parseContentDispositionFilename } from './downloadUtils'
 
 // PKG-05/06 Generación de Artefactos — UC15 (Exportar a XMI). Conectado de
@@ -33,7 +34,7 @@ export function ExportXmiButton({ diagramId }: ExportXmiButtonProps) {
       const filename = parseContentDispositionFilename(res.headers.get('content-disposition')) ?? 'diagrama.xmi'
       downloadBlob(blob, filename)
     } catch {
-      setErrorMessage('No se pudo contactar al backend en http://localhost:8080')
+      setErrorMessage(`No se pudo contactar al backend en ${API_BASE_URL}`)
     } finally {
       setBusy(false)
     }

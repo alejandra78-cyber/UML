@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { authFetch } from '../collaboration/diagramBootstrap'
 import { useAuthStore } from '../auth/useAuthStore'
+import { API_BASE_URL } from '../config'
 import { downloadBlob, parseContentDispositionFilename } from './downloadUtils'
 import './GenerateBackendButton.css'
 
@@ -71,7 +72,7 @@ export function GenerateBackendButton({ diagramId }: GenerateBackendButtonProps)
       downloadBlob(blob, filename)
       setStatus('idle')
     } catch {
-      setErrorMessage('No se pudo contactar al backend en http://localhost:8080')
+      setErrorMessage(`No se pudo contactar al backend en ${API_BASE_URL}`)
       setStatus('error')
     }
   }

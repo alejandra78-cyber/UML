@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { authFetch } from '../../collaboration/diagramBootstrap'
 import { useAuthStore } from '../../auth/useAuthStore'
+import { API_BASE_URL } from '../../config'
 import './VoiceToolbar.css'
 
 // PKG-03 Modelado Asistido por IA — implementa UC08 (Modelar por Comando de Voz) y
@@ -123,7 +124,7 @@ export function VoiceToolbar({ diagramId }: VoiceToolbarProps) {
       setFeedback(buildFeedback(response))
       setCommandText('')
     } catch {
-      setFeedback({ kind: 'error', message: 'No se pudo contactar al backend en http://localhost:8080' })
+      setFeedback({ kind: 'error', message: `No se pudo contactar al backend en ${API_BASE_URL}` })
     } finally {
       setIsSending(false)
     }

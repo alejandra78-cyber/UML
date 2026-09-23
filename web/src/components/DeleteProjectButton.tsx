@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { authFetch, clearCachedActiveProject } from '../collaboration/diagramBootstrap'
 import { useAuthStore } from '../auth/useAuthStore'
+import { API_BASE_URL } from '../config'
 import { DeleteProjectModal } from './DeleteProjectModal'
 
 // Gestión de Proyecto — UC19 (Eliminar Proyecto). Conectado de verdad: el
@@ -62,7 +63,7 @@ export function DeleteProjectButton({ projectId, onDeleted }: DeleteProjectButto
       setModalOpen(false)
       onDeleted()
     } catch {
-      setErrorMessage('No se pudo contactar al backend en http://localhost:8080')
+      setErrorMessage(`No se pudo contactar al backend en ${API_BASE_URL}`)
     } finally {
       setBusy(false)
     }

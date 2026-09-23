@@ -7,7 +7,9 @@
 // (p.ej. para probar colaboración) terminen viendo y editando el MISMO
 // diagrama en vez de que cada uno cree el suyo la primera vez que entra.
 
-export const API_BASE = 'http://localhost:8080/api/v1'
+import { API_BASE_URL } from '../config'
+
+export const API_BASE = `${API_BASE_URL}/api/v1`
 
 export interface ProjectResponse {
   id: string

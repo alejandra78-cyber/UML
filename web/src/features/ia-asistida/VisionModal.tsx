@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { API_BASE } from '../../collaboration/diagramBootstrap'
 import { useAuthStore } from '../../auth/useAuthStore'
+import { API_BASE_URL } from '../../config'
 import { useDiagramStore } from '../../store/useDiagramStore'
 import type { Attribute, ClassEntity, Method, Relationship } from '../../types/diagram'
 import './VisionModal.css'
@@ -160,7 +161,7 @@ export function VisionModal({ diagramId }: VisionModalProps) {
       setDraftRelationships(draft.relationships.map((r) => ({ ...r, included: true })))
       setPhase('review')
     } catch {
-      setErrorMessage('No se pudo contactar al backend en http://localhost:8080')
+      setErrorMessage(`No se pudo contactar al backend en ${API_BASE_URL}`)
       setPhase('error')
     }
   }

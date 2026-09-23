@@ -1,8 +1,9 @@
 import { Client, type IMessage } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
+import { API_BASE_URL } from '../config'
 import type { OperationType, StompBroadcastMessage } from '../types/collaboration'
 
-const BACKEND_HTTP_URL = 'http://localhost:8080'
+const BACKEND_HTTP_URL = API_BASE_URL
 const BACKEND_WS_URL = `${BACKEND_HTTP_URL}/ws-stomp`
 
 const LOCK_ACQUIRE_TIMEOUT_MS = 2000

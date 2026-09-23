@@ -1,6 +1,7 @@
 import { useRef, useState, type ChangeEvent } from 'react'
 import { API_BASE, writeCached } from '../collaboration/diagramBootstrap'
 import { useAuthStore } from '../auth/useAuthStore'
+import { API_BASE_URL } from '../config'
 import './GenerateBackendButton.css'
 
 // PKG-05/06 Generación de Artefactos — UC16 (Importar Diagrama desde XMI).
@@ -92,7 +93,7 @@ export function ImportXmiButton({ projectId }: ImportXmiButtonProps) {
       setCreatedDiagram(diagram)
       setStatus('idle')
     } catch {
-      setErrorMessage('No se pudo contactar al backend en http://localhost:8080')
+      setErrorMessage(`No se pudo contactar al backend en ${API_BASE_URL}`)
       setStatus('error')
     }
   }

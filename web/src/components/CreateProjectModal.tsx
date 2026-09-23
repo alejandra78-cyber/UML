@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { createProject, type ProjectResponse } from '../collaboration/diagramBootstrap'
 import { useAuthStore } from '../auth/useAuthStore'
+import { API_BASE_URL } from '../config'
 import './ProjectModals.css'
 
 // Gestión de Proyecto — UC17 (Crear Proyecto). El POST /api/v1/projects ya
@@ -53,7 +54,7 @@ export function CreateProjectModal({ onCreated }: CreateProjectModalProps) {
       setErrorMessage(
         err instanceof Error && err.message.startsWith('No se pudo crear el proyecto')
           ? err.message
-          : 'No se pudo contactar al backend en http://localhost:8080',
+          : `No se pudo contactar al backend en ${API_BASE_URL}`,
       )
       setStatus('error')
     }

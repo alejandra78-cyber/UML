@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuthStore } from '../auth/useAuthStore'
+import { API_BASE_URL } from '../config'
 import {
   listProjects,
   resolveDiagramForProject,
@@ -55,7 +56,7 @@ export function ProjectSelector({ onActivated }: ProjectSelectorProps) {
         setLoadState('loaded')
       } catch (err) {
         if (cancelled || (err instanceof DOMException && err.name === 'AbortError')) return
-        setLoadError(err instanceof Error ? err.message : 'No se pudo contactar al backend en http://localhost:8080')
+        setLoadError(err instanceof Error ? err.message : `No se pudo contactar al backend en ${API_BASE_URL}`)
         setLoadState('error')
       }
     }

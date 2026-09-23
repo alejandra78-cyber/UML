@@ -1,6 +1,7 @@
 import { create } from 'zustand'
+import { API_BASE_URL } from '../config'
 
-const AUTH_BASE_URL = 'http://localhost:8080/api/v1/auth'
+const AUTH_BASE_URL = `${API_BASE_URL}/api/v1/auth`
 const STORAGE_KEY = 'diagram-app:auth'
 
 interface AuthResponse {
@@ -130,7 +131,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       })
     } catch {
-      set({ status: 'error', error: 'No se pudo contactar al backend en http://localhost:8080' })
+      set({ status: 'error', error: `No se pudo contactar al backend en ${API_BASE_URL}` })
     }
   },
 
@@ -167,7 +168,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       })
     } catch {
-      set({ status: 'error', error: 'No se pudo contactar al backend en http://localhost:8080' })
+      set({ status: 'error', error: `No se pudo contactar al backend en ${API_BASE_URL}` })
     }
   },
 

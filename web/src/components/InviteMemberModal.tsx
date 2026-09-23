@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { authFetch } from '../collaboration/diagramBootstrap'
 import { useAuthStore } from '../auth/useAuthStore'
+import { API_BASE_URL } from '../config'
 import './ProjectModals.css'
 
 // Gestión de Proyecto — UC18 (Invitar Miembro). Conectado de verdad: el backend
@@ -67,7 +68,7 @@ export function InviteMemberModal({ projectId }: InviteMemberModalProps) {
       }
       setStatus('error')
     } catch {
-      setErrorMessage('No se pudo contactar al backend en http://localhost:8080')
+      setErrorMessage(`No se pudo contactar al backend en ${API_BASE_URL}`)
       setStatus('error')
     }
   }
