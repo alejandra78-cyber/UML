@@ -31,7 +31,7 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/umlapp
       SPRING_DATASOURCE_USERNAME: umlapp
-      SPRING_DATASOURCE_PASSWORD: umlapp_production_password
+      SPRING_DATASOURCE_PASSWORD: umlapp_dev_password
       JWT_SECRET: fEBJ64I7+yN3sM92FtSywMal7BN1Y5LlqgsIcxKp/7M=
     depends_on:
       postgres:
@@ -40,7 +40,7 @@ services:
   # Frontend Web React 18 + Vite
   frontend:
     build:
-      context: ./frontend # Ajusta la ruta a la carpeta de tu web
+      context: ./web # Ajusta la ruta a la carpeta de tu web
       dockerfile: Dockerfile
     container_name: frontend-react
     restart: always
