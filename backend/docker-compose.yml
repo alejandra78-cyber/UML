@@ -33,6 +33,7 @@ services:
       SPRING_DATASOURCE_USERNAME: umlapp
       SPRING_DATASOURCE_PASSWORD: umlapp_dev_password
       JWT_SECRET: fEBJ64I7+yN3sM92FtSywMal7BN1Y5LlqgsIcxKp/7M=
+      OPENAI_API_KEY: ${OPENAI_API_KEY} 
     depends_on:
       postgres:
         condition: service_healthy

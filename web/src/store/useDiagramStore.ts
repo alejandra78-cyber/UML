@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { enqueueMutation } from '../offline/offlineQueue'
 import type { OperationType, StompBroadcastMessage } from '../types/collaboration'
 import type { Attribute, CanonicalModel, ClassEntity, Method, Relationship } from '../types/diagram'
+import { generateUUID } from '../utils/uuid'
 import { applyOperation } from './applyOperation'
 
 // El diagrama arranca vacío: el estado real vive en PostgreSQL (current_state JSONB)
@@ -68,9 +69,10 @@ function deriveGraph(
 // no tenga formato UUID (p.ej. "class-abc123") hace que Jackson falle al convertir
 // el payload y el backend rechace la mutación en silencio (solo avisa por
 // /user/queue/errors, que hasta ahora nadie escuchaba). Por eso acá SIEMPRE se usa
-// crypto.randomUUID(), nunca un id "amigable" con prefijo.
+// generateUUID() (ver utils/uuid.ts -- no crypto.randomUUID(), que no existe fuera
+// de un contexto seguro), nunca un id "amigable" con prefijo.
 function createId(): string {
-  return crypto.randomUUID()
+  return generateUUID()
 }
 
 /** Diferencia campo a campo dos objetos planos; usado para armar el payload parcial de UPDATE_ATTRIBUTE/UPDATE_METHOD. */

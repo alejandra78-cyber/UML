@@ -15,6 +15,7 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import type { OperationType } from '../types/collaboration'
+import { generateUUID } from '../utils/uuid'
 
 export interface QueuedMutation {
   id: string
@@ -54,7 +55,7 @@ function openDatabase(): Promise<IDBDatabase> {
 export async function enqueueMutation(mutation: Omit<QueuedMutation, 'id' | 'queuedAt'>): Promise<void> {
   const record: QueuedMutation = {
     ...mutation,
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     queuedAt: Date.now(),
   }
   try {

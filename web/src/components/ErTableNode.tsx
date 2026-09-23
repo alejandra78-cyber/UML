@@ -3,13 +3,15 @@ import { Handle, Position as FlowPosition, type NodeProps } from 'reactflow'
 import { useDiagramStore } from '../store/useDiagramStore'
 import type { Attribute, AttributeType, ClassEntity } from '../types/diagram'
 import { ATTRIBUTE_TYPES, resolveAttributeType } from '../utils/attributeType'
+import { generateUUID } from '../utils/uuid'
 import './ErTableNode.css'
 
 // El backend deserializa el id como java.util.UUID (ver Attribute en metamodel/model):
 // un id con prefijo tipo "attr-abc123" no es un UUID válido (misma nota que en
-// UmlClassNode.tsx).
+// UmlClassNode.tsx). generateUUID() (utils/uuid.ts) en vez de crypto.randomUUID(),
+// que no existe fuera de un contexto seguro (HTTPS/localhost).
 function createId(): string {
-  return crypto.randomUUID()
+  return generateUUID()
 }
 
 interface ErTableNodeData {
